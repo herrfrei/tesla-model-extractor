@@ -157,12 +157,17 @@ Produced for every `.tscn` (vehicles, wheels, brakes, cables):
   "nodes": {
     "<node name>": { "parent": "Door_LF_Spatial", "type": "Spatial", "instance": "…tscn", "visible": false,
                      "matrix": [16 floats, column-major], "mesh": "….obj", "inline_mesh": true,
-                     "materials": { "<surface index>": "<material key>" } }
+                     "materials": { "<surface index>": "<material key>" },
+                     "name": "Dashboard" }   // only when the key is not the node name, see below
   },
   "materials": { "<key = file path | sub_resource#N>": MaterialDesc },
   "materials_by_name": { "<file stem | resource_name>": "<material key>" }
 }
 ```
+
+`nodes` is keyed by node name. When several nodes share a name (Model 3 has a `Dashboard` mesh and a
+`Spatials/Dashboard` marker), the node inherited from the GLB keeps the bare name and the others are keyed by their
+path, `<parent>/<name>`, with their real name in `name`. Markers, bindings and pivots in the manifest use these keys.
 
 `materials_by_name` lets a renderer re-apply the importer materials that sit next to the scene to GLB surfaces the
 `.tscn` does not override (the GLB export flattens blend modes, UV2 emission and unshaded flags).

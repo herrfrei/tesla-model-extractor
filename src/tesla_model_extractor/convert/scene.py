@@ -48,7 +48,7 @@ class SceneFacts:
     root_instance: str | None  # rel path of the instanced scene (GLB / tscn) or None
     root_script: str | None
     root_transform: list[float] | None  # 16 col-major if the root has a transform
-    bindings: dict[str, tuple[str, str]] = field(default_factory=dict)  # prop → (raw NodePath, leaf node name)
+    bindings: dict[str, tuple[str, str]] = field(default_factory=dict)  # prop → (raw NodePath, key in `nodes`)
     root_props: dict[str, Any] = field(default_factory=dict)
     players: list[ClipSource] = field(default_factory=list)
     markers: list[MarkerInfo] = field(default_factory=list)
@@ -152,6 +152,7 @@ class SceneConverter:
             if ext.type == "PackedScene" and ext.rel.lower().endswith(".tscn"):
                 facts.packed_scenes.append(ext.rel)
 
+        keys = _node_keys(gf)
         for b in gf.nodes:
             name = b.name or ""
             parent = b.parent
@@ -167,7 +168,9 @@ class SceneConverter:
                     root_props[k] = _simplify(gf, v)
                     np_ = node_path(v)
                     if np_ is not None and k.endswith("_path"):
-                        facts.bindings[k] = (np_, leaf_of(np_))
+                        leaf = leaf_of(np_)
+                        owner = np_.split(":", 1)[0].rstrip("/").rpartition("/")[0] or "."
+                        facts.bindings[k] = (np_, keys.get((owner, leaf), leaf))
                     if isinstance(v, ExtRef) and gf.ext.get(v.id) and gf.ext[v.id].type == "PackedScene":
                         facts.packed_scene_props[k] = gf.ext[v.id].rel
                 if isinstance(props.get("script"), ExtRef):
@@ -180,7 +183,10 @@ class SceneConverter:
                 facts.node_parents[name] = None
                 continue
 
+            name = keys.get((parent, name), name)
             n = nodes.setdefault(name, {"parent": parent})
+            if b.name and name != b.name:
+                n["name"] = b.name
             facts.node_names.add(name)
             facts.node_parents.setdefault(name, parent)
             if b.type:
@@ -299,6 +305,36 @@ class SceneConverter:
             if isinstance(rn, str) and rn:
                 by_name.setdefault(rn, rel)
         return by_name
+
+
+def _node_keys(gf: GodotFile) -> dict[tuple[str, str], str]:
+    """Key of each non-root node in `nodes`: its name, or `parent/name` when another node elsewhere shares the name.
+
+    Consumers look nodes up by name, so two nodes with one name would merge into one entry (Model3_High has a
+    `Dashboard` mesh and a `Spatials/Dashboard` marker: the mesh got the marker's transform and floated above the
+    hood). The node inherited from the GLB keeps the bare name, because that is the name the GLB lookup finds.
+    """
+    by_name: dict[str, list[tuple[str, bool]]] = {}
+    for b in gf.nodes:
+        if b.parent is None or not b.name:
+            continue
+        declared = bool(b.type or b.attrs.get("instance"))
+        paths = by_name.setdefault(b.name, [])
+        for i, (p, d) in enumerate(paths):
+            if p == b.parent:
+                paths[i] = (p, d or declared)
+                break
+        else:
+            paths.append((b.parent, declared))
+    keys: dict[tuple[str, str], str] = {}
+    for name, paths in by_name.items():
+        if len(paths) < 2:
+            continue
+        keeper = next((p for p, declared in paths if not declared), paths[0][0])
+        for p, _ in paths:
+            if p != keeper:
+                keys[(p, name)] = f"{p}/{name}"
+    return keys
 
 
 def _locator_name(leaf: str) -> str:

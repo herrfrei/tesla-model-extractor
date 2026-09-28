@@ -40,6 +40,11 @@ def test_scene_overrides_and_facts(recovered: Path):
     lock = next(m for m in f.markers if m.node == "Lock_Marker")
     assert lock.position == [0, 1.7, 0]
     assert f.packed_scene_props["brakes_standard_front_left"] == "Ego/Brakes/Brakes_Std_F.tscn"
+    # a marker sharing its name with a GLB mesh gets its own entry instead of moving the mesh
+    assert ov["nodes"]["Dashboard"] == {"parent": ".", "materials": {"0": "sub_resource#9"}}
+    dash = ov["nodes"]["Spatials/Dashboard"]
+    assert dash["name"] == "Dashboard" and dash["parent"] == "Spatials" and dash["matrix"][12:15] == [0.89, 0.93, 0]
+    assert next(m for m in f.markers if m.name == "dashboard").node == "Spatials/Dashboard"
 
 
 def test_anim_external_transform_track(recovered: Path):

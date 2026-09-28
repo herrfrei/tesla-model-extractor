@@ -78,6 +78,7 @@ class Assembler:
         self.mats.paint_explicit = bool(opt.paint)
         self.hidden: set[int] = set()
         self._overridden: set[tuple[int, int]] = set()  # (mesh, primitive) with a .tscn material
+        self._by_key: dict[str, int] = {}  # overrides key → index for nodes keyed by path, not by their name
 
     # ---------- setup ----------
     def _paint(self) -> Paint | None:
@@ -100,6 +101,7 @@ class Assembler:
         self.mats.paint_explicit = bool(self.opt.paint)
         self.hidden = set()
         self._overridden = set()
+        self._by_key = {}
 
     # ---------- scenes ----------
     def attach_scene(self, overrides_rel: str, parent: int, glb_hint: str | None = None) -> int | None:
@@ -128,9 +130,10 @@ class Assembler:
         return root
 
     def _subtree_index(self, root: int) -> dict[str, list[int]]:
+        keyed = {i: key for key, i in self._by_key.items()}
         out: dict[str, list[int]] = {}
         for i in self.doc.descendants(root):
-            out.setdefault(self.doc.nodes[i].get("name", ""), []).append(i)
+            out.setdefault(keyed.get(i) or self.doc.nodes[i].get("name", ""), []).append(i)
         return out
 
     def _apply_nodes(self, ov: dict[str, Any], root: int, overrides_rel: str) -> None:
@@ -142,20 +145,28 @@ class Assembler:
             if n.get("parent") is None:  # scene root, handled by attach_scene
                 continue
             parent_leaf = str(n["parent"]).rstrip("/").rsplit("/", 1)[-1]
-            parent = root if n["parent"] == "." else created.get(parent_leaf, _first(index, parent_leaf))
+            parent: int | None
+            if n["parent"] == ".":
+                parent = root
+            elif n["parent"] in created:  # a node keyed by its path because its name is taken (see convert.scene)
+                parent = created[n["parent"]]
+            else:
+                parent = created.get(parent_leaf, _first(index, parent_leaf))
             if parent is None:
                 if parent_leaf not in skipped:
                     self.warnings.append(f"{overrides_rel}: parent {n['parent']!r} of {name} not found")
                 skipped.add(name)
                 continue
-            idx = self._resolve(name, n, parent, index)
+            idx = self._resolve(n.get("name", name), n, parent, index)
             if idx is None:
-                idx = self._create(name, n, parent, overrides_rel)
+                idx = self._create(n.get("name", name), n, parent, overrides_rel)
                 if idx is None:
                     skipped.add(name)
                     continue
                 created[name] = idx
                 index.setdefault(name, []).append(idx)
+            if n.get("name"):
+                self._by_key[name] = idx
             node = self.doc.nodes[idx]
             if n.get("matrix"):
                 set_matrix(node, n["matrix"])

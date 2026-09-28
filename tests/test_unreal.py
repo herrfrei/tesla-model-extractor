@@ -261,6 +261,14 @@ def test_export_vehicle_default_look(recovered: Path, rules_dir: Path):
     frunk = doc.find("FrunkMarker")
     assert frunk is not None and "mesh" not in doc.nodes[frunk] and doc.nodes[frunk]["extras"]["marker"] == "frunk"
     assert doc.nodes[doc.find("Lock_Marker")]["translation"] == [0.0, 1.7, 0.0]
+    dashes = [i for i, n in enumerate(doc.nodes) if n["name"] == "Dashboard"]
+    mesh = next(i for i in dashes if "mesh" in doc.nodes[i])
+    marker = next(i for i in dashes if "mesh" not in doc.nodes[i])
+    assert (
+        doc.nodes[marker]["translation"] == [0.89, 0.93, 0.0] and doc.nodes[marker]["extras"]["marker"] == "dashboard"
+    )
+    assert doc.nodes[mesh].get("translation") != [0.89, 0.93, 0.0]
+    assert marker in doc.nodes[doc.find("Spatials")]["children"]
     anims = {a["name"]: a for a in doc.animations}
     assert set(anims) == {"HoodAnimation", "TrunkAnimation"}
     assert all(doc.nodes[c["target"]["node"]]["name"] == "Hood_Spatial" for c in anims["HoodAnimation"]["channels"])

@@ -195,6 +195,11 @@ transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -0.78, 1.02, 1.97 )
 script = ExtResource( 36 )
 marker_name = "chargePort"
 
+[node name="Dashboard" type="Spatial" parent="Spatials" index="2"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0.89, 0.93, 0 )
+script = ExtResource( 36 )
+marker_name = "dashboard"
+
 [node name="Plate_US" parent="." index="5"]
 visible = false
 
@@ -203,6 +208,9 @@ anims/HoodAnimation = ExtResource( 25 )
 
 [node name="TrunkAnimation" type="AnimationPlayer" parent="." index="7"]
 anims/TrunkAnimation = SubResource( 8 )
+
+[node name="Dashboard" parent="." index="8"]
+material/0 = SubResource( 9 )
 """
 
 HOOD_ANIM = """[gd_resource type="Animation" format=2]
@@ -448,6 +456,7 @@ def recovered(tmp_path: Path) -> Path:
                 "Plate_EU",
                 "Plate_US",
                 "Tesla_Badge",
+                "Dashboard",
             ],
             ["Paint", "Glass", "Interior"],
             prims={"Static_Exterior": 3},
