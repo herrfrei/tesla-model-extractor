@@ -31,51 +31,15 @@ drop in your bundle, tick the cars, click Export.
 The images are the exported GLB files rendered with three.js (studio environment, paint brightened for a lit scene);
 every open part is a glTF animation contained in the file, posed at its end frame.
 
-## Quick start
-
-1. Get the Android bundle of the Tesla app (`Tesla_<version>.apks` / `.apkm` / `.xapk` / `.apk`) from a device you
-   own, e.g. with an APK exporter app or `adb`. Version 4.60 or newer is what this tool is tested against.
-2. Run the extractor (pick one):
-
-   **Desktop app** (no installation, no terminal): download it from the
-   [latest release](https://github.com/koenhendriks/tesla-model-extractor/releases/latest) and see
-   [Desktop app](#desktop-app) below.
-
-   **Docker** (nothing to install, GDRE Tools bundled):
-   ```bash
-   docker run --rm -v "$PWD":/work ghcr.io/koenhendriks/tesla-model-extractor unreal /work/Tesla_4.60.5.apkm --all -o /work/unreal
-   ```
-   Add `-it` for the interactive vehicle picker and a table that uses your full terminal width.
-
-   **Python** (3.11+; GDRE Tools is downloaded once, checksum-verified, into `~/.cache/tesla-model-extractor/`):
-   ```bash
-   pipx install git+https://github.com/koenhendriks/tesla-model-extractor   # or: pip install git+https://…
-   tesla-model-extract list Tesla_4.60.5.apkm                # what is in the bundle
-   tesla-model-extract unreal Tesla_4.60.5.apkm --models bayberry --paint Quicksilver -o unreal/
-   ```
-
-The first run takes a few minutes: GDRE recovers the whole 450 MB Godot project (≈ 1.4 GB once recovered). Pass
-`--keep-recovered DIR` to reuse it for later runs (`--recovered DIR` skips straight to conversion).
-
-```
-$ tesla-model-extract list Tesla_4.60.5.apkm
- id            name                                   codename     API model / fascia                          wheels           raw MB
- bayberry      Model Y (2025+) Premium / Performance  Bayberry     modely (baseBayberry, performanceBayberry)  6 (Crossflow19)  23.6
- bayberry_e41  Model Y (2025+) Standard               BayberryE41  modely (e41Bayberry)                        6 (E4118)        32.8
- bayberry_e80  Model Y L (long wheelbase)             BayberryE80  modely                                      6 (MachinaV219)  25.3
- y_high        Model Y (2020–2024)                    Y_High       modely                                      15 (Gemini)      19.7
- poppyseed     Model 3 (2024+ Highland)               Poppyseed    model3 (basePoppyseed, …)                   4 (Wishbone20)   20.7
- model3_high   Model 3 (2017–2023)                    3_High       model3                                      …
- model_s / s_palladium / model_x / x_palladium / cybertruck / semi …
-```
-
 ## Desktop app
 
 ![The desktop app's wizard: tick the cars you want from the bundle](docs/images/desktop-app.webp)
 
-Every [release](https://github.com/koenhendriks/tesla-model-extractor/releases/latest) has a ready-to-run app; it
-contains Python and everything else it needs, and downloads GDRE Tools (pinned version, checksum-verified) on first
-use.
+The easiest way: no installation, no terminal. Every
+[release](https://github.com/koenhendriks/tesla-model-extractor/releases/latest) has a ready-to-run app; it contains
+Python and everything else it needs, and downloads GDRE Tools (pinned version, checksum-verified) on first use. All
+you need is the Android bundle of the Tesla app (`Tesla_<version>.apks` / `.apkm` / `.xapk` / `.apk`) from a device
+you own, e.g. exported with an APK exporter app; version 4.60 or newer is what this tool is tested against.
 
 | system | download | first start |
 |---|---|---|
@@ -130,6 +94,40 @@ On Linux and macOS the same binary also runs the CLI when given a command, e.g.
 `./tesla-model-extractor-<version>-linux-x86_64 list Tesla_4.60.5.apkm`. With Python, `pip install
 "tesla-model-extractor[gui] @ git+https://github.com/koenhendriks/tesla-model-extractor"` installs the app as
 `tesla-model-extractor-gui` (or `tesla-model-extract gui`).
+
+## Quick start (command line)
+
+1. Get the Android bundle of the Tesla app (`Tesla_<version>.apks` / `.apkm` / `.xapk` / `.apk`) from a device you
+   own, e.g. with an APK exporter app or `adb`. Version 4.60 or newer is what this tool is tested against.
+2. Run the extractor (pick one):
+
+   **Docker** (nothing to install, GDRE Tools bundled):
+   ```bash
+   docker run --rm -v "$PWD":/work ghcr.io/koenhendriks/tesla-model-extractor unreal /work/Tesla_4.60.5.apkm --all -o /work/unreal
+   ```
+   Add `-it` for the interactive vehicle picker and a table that uses your full terminal width.
+
+   **Python** (3.11+; GDRE Tools is downloaded once, checksum-verified, into `~/.cache/tesla-model-extractor/`):
+   ```bash
+   pipx install git+https://github.com/koenhendriks/tesla-model-extractor   # or: pip install git+https://…
+   tesla-model-extract list Tesla_4.60.5.apkm                # what is in the bundle
+   tesla-model-extract unreal Tesla_4.60.5.apkm --models bayberry --paint Quicksilver -o unreal/
+   ```
+
+The first run takes a few minutes: GDRE recovers the whole 450 MB Godot project (≈ 1.4 GB once recovered). Pass
+`--keep-recovered DIR` to reuse it for later runs (`--recovered DIR` skips straight to conversion).
+
+```
+$ tesla-model-extract list Tesla_4.60.5.apkm
+ id            name                                   codename     API model / fascia                          wheels           raw MB
+ bayberry      Model Y (2025+) Premium / Performance  Bayberry     modely (baseBayberry, performanceBayberry)  6 (Crossflow19)  23.6
+ bayberry_e41  Model Y (2025+) Standard               BayberryE41  modely (e41Bayberry)                        6 (E4118)        32.8
+ bayberry_e80  Model Y L (long wheelbase)             BayberryE80  modely                                      6 (MachinaV219)  25.3
+ y_high        Model Y (2020–2024)                    Y_High       modely                                      15 (Gemini)      19.7
+ poppyseed     Model 3 (2024+ Highland)               Poppyseed    model3 (basePoppyseed, …)                   4 (Wishbone20)   20.7
+ model3_high   Model 3 (2017–2023)                    3_High       model3                                      …
+ model_s / s_palladium / model_x / x_palladium / cybertruck / semi …
+```
 
 ## GLB export (Unreal Engine, Blender, any glTF importer)
 
