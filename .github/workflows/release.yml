@@ -1,0 +1,119 @@
+name: Desktop app
+
+# Builds the desktop app for Linux, Windows and macOS. Tags (v*) attach the binaries to a GitHub Release; pull
+# requests that touch the app or its packaging, and manual runs, only build and smoke-test them.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "src/tesla_model_extractor/gui/**"
+      - "pyproject.toml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # the oldest supported Ubuntu runner: a binary linked against its glibc runs on most current distros
+          - { os: ubuntu-22.04, target: linux-x86_64 }
+          - { os: windows-latest, target: windows-x64 }
+          - { os: macos-14, target: macos-arm64 }
+          - { os: macos-15-intel, target: macos-x86_64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Qt runtime libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+      - run: python -m pip install --upgrade pip && pip install ".[gui,build]"
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(python -c 'import tesla_model_extractor as t; print(t.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: Tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          [[ "$tag" == "${{ steps.version.outputs.version }}" || "$tag" == "${{ steps.version.outputs.version }}"-* ]] \
+            || { echo "tag $GITHUB_REF_NAME does not match version ${{ steps.version.outputs.version }}"; exit 1; }
+      - run: python packaging/make_icon.py build
+      - run: pyinstaller --noconfirm packaging/tesla-model-extractor.spec
+
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: dist/tesla-model-extractor --smoke
+      - name: Smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: '"dist/Tesla Model Extractor.app/Contents/MacOS/tesla-model-extractor" --smoke'
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # a windowed exe has no console: wait for it and read the log it writes instead
+        run: |
+          $p = Start-Process -FilePath dist\tesla-model-extractor.exe -ArgumentList '--smoke' -Wait -PassThru
+          Get-Content "$HOME\.cache\tesla-model-extractor\desktop.log" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { throw "smoke test failed with exit code $($p.ExitCode)" }
+
+      - name: Package
+        shell: bash
+        env:
+          NAME: tesla-model-extractor-${{ steps.version.outputs.version }}-${{ matrix.target }}
+        run: |
+          mkdir release
+          case "$RUNNER_OS" in
+            Linux)   cp dist/tesla-model-extractor "release/$NAME" ;;
+            Windows) cp dist/tesla-model-extractor.exe "release/$NAME.exe" ;;
+            macOS)
+              # one consistent ad-hoc signature over the whole bundle; without it Apple Silicon reports the app as damaged
+              codesign --force --deep --sign - "dist/Tesla Model Extractor.app"
+              ditto -c -k --sequesterRsrc --keepParent "dist/Tesla Model Extractor.app" "release/$NAME.zip" ;;
+          esac
+          ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - run: cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release/* --clobber
+          else
+            pre=""; [[ "$tag" == *-* ]] && pre="--prerelease"
+            gh release create "$tag" release/* --title "$tag" --generate-notes $pre
+          fi
