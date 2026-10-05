@@ -28,8 +28,8 @@ drop in your bundle, tick the cars, click Export.
 | ![Model 3 Highland with trunk, rear door and charge port open](docs/images/model-3-trunk-chargeport.webp) | ![Cybertruck with frunk and doors open](docs/images/cybertruck-open.webp) |
 | Model 3 Highland: trunk, rear door and charge port open, front window down | Cybertruck: stainless body from the app's `paint_mix` shader, frunk and doors open |
 
-The images are the exported GLB files rendered with three.js (studio environment, paint brightened for a lit scene);
-every open part is a glTF animation contained in the file, posed at its end frame.
+The images are the exported GLB files rendered with three.js in the app's studio environment; every open part is a
+glTF animation contained in the file, posed at its end frame.
 
 ## Desktop app
 
@@ -86,6 +86,7 @@ The advanced options map one to one onto the command line; **Advanced → Same a
 | Wheels / Brakes (GLB) | `unreal --wheels default\|none\|NAME`, `--brakes default\|none\|SET` |
 | Extras: separate wheel GLBs, charge cables, keep every part, keep normal-map green | `--separate-wheels`, `--cables`, `--keep-all`, `--keep-normal-y` |
 | Rotate | `unreal --yaw DEG` |
+| Paint brightness | `unreal --paint-brightness FACTOR` |
 | Wheels (asset pack): family / every wheel / only these | `extract --wheels family\|all\|NAME,…` |
 | One zip for all (…split when over the size limit), unzipped folder, size limit | `extract --bundle` (`--split`), `--dir`, `--max-size MIB` |
 | Advanced: GDRE Tools, never download, extra rules | `--gdre PATH`, `--no-download`, `--rules DIR` |
@@ -134,7 +135,8 @@ $ tesla-model-extract list Tesla_4.60.5.apkm
 `unreal` writes one folder per vehicle with a **self-contained glTF 2.0 binary**:
 
 * the mesh hierarchy with the app's real PBR materials: repacked metallic / roughness / occlusion textures, normal
-  maps, emission, alpha blending, double-sided flags, UV tiling, clear-coat car paint from the app's paint table;
+  maps, emission, alpha blending, double-sided flags, UV tiling, clear-coat car paint from the app's paint table
+  (brightened for a normally lit scene: the app stores its paints about ten times darker, see `--paint-brightness`);
 * the closure animations as glTF node animations on the pivot nodes (frunk, trunk with struts, doors, windows,
   mirrors, charge port, falcon doors, Cybertruck tonneau and suspension);
 * the vehicle's default wheel under each wheel pivot and the standard brakes under the brake pivots;
@@ -183,6 +185,7 @@ tesla-model-extract [extract] <bundle|recovered-dir> [-o OUT] [--models ID[,ID]]
 tesla-model-extract unreal   <bundle|recovered-dir|pack.zip> [-o DIR] [--models ID[,ID]] [--all] [--paint NAME]
                     [--variant V[,V]] [--wheels default|NAME|none] [--brakes default|SET|none]
                     [--separate-wheels] [--cables] [--keep-all] [--yaw DEG] [--keep-normal-y]
+                    [--paint-brightness FACTOR]
 tesla-model-extract list     <bundle|recovered-dir>        # vehicles, wheels, paints in the bundle
 tesla-model-extract inspect  <bundle|recovered-dir> <id>   # bindings / animation players / markers of one scene
 tesla-model-extract validate <pack.zip|dir>                # asset pack: schema, referenced files, node names, size

@@ -31,6 +31,7 @@ tesla-model-extract unreal recovered-dir --models model_s --wheels none --brakes
 |---|---|
 | `--models ID,…` / `--all` | which vehicles (ids as shown by `list`) |
 | `--paint NAME` | paint from the app's table (`list` prints the names). Default: the app's fallback paint; the Cybertruck keeps its stainless shader values unless a paint is given |
+| `--paint-brightness FACTOR` | brighten the app's very dark paint colours for a normally lit scene (default 8; 1 = the raw app values, what earlier versions exported). See [Material translation notes](#material-translation-notes) |
 | `--variant V,…` | looks to bake in: `performance`, `rhd`, `plate_eu` (default), `plate_us`, `seats_7`. Parts of the other looks are removed |
 | `--keep-all` | keep every part; variants are only listed in the sidecar |
 | `--wheels default\|NAME\|none` | wheel merged under the four wheel pivots (`Wheel_LF` … `Wheel_RR`) |
@@ -103,13 +104,17 @@ If your project wants the nose on +X, pass `--yaw 90` (or −90) or tick *Force 
 | `params_cull_mode = disabled` | `doubleSided` |
 | `flags_unshaded` | `KHR_materials_unlit` |
 | `uv1_scale` / `uv1_offset` | `KHR_texture_transform` |
-| car paint shader (`opaque_skybox`, `paint_mix`) | PBR with the paint table's albedo / metallic / roughness, `CarPaint_AO` occlusion, `KHR_materials_clearcoat` |
+| car paint shader (`opaque_skybox`, `paint_mix`) | PBR with the paint table's albedo (brightened, see below) / metallic / roughness, `CarPaint_AO` occlusion, `KHR_materials_clearcoat` |
 | glass shader (`glass_skybox`) | PBR, colour + alpha from the shader, `BLEND` |
 | badge, beam glow, power flow, plate, defrost shaders | approximations (metallic chrome, unlit blend); listed in `warnings` |
 
-The paint values are the app's: deliberately dark, because the app's look comes from the studio panorama's
-reflections. In a lit Unreal scene you will probably want a brighter base colour; `paints.json` has the full table
-to build a Material Parameter Collection or a data table from.
+The app stores its paint colours about ten times darker than the paint they show (Pearl White is `#181818`): it
+lights them in gamma space at energy 4 and gets much of the look from strong reflections. Used as they are, a glTF
+renderer shows every paint nearly black. The exporter therefore brightens the paint colour in gamma space before it
+becomes the base colour, by `--paint-brightness` (default 8, chosen by comparing renders in the app's studio
+panorama; 1 keeps the raw value), capped where the brightest channel reaches 1 so the hue stays. Each paint material
+keeps the app's raw colour in `extras.app_color` and the factor in `extras.paint_brightness`; `unreal.json` records
+the factor too, and `paints.json` has the raw table to build a Material Parameter Collection or a data table from.
 
 ## FBX
 

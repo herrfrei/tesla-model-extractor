@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
 from .. import GDRE_VERSION
 from ..gdre import recovered_cache_root
 from ..service import Session, VehicleRow
+from ..unreal.materials import DEFAULT_PAINT_BRIGHTNESS
 from .form import GLB, PACK, FormState
 from .widgets import (
     APP_NAME,
@@ -277,12 +278,26 @@ class AdvancedView(QWidget):
         self.yaw.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         form.addRow("Rotate", self.yaw)
 
+        self.paint_brightness = QDoubleSpinBox()
+        self.paint_brightness.setRange(1, 10)
+        self.paint_brightness.setSingleStep(0.5)
+        self.paint_brightness.setDecimals(1)
+        self.paint_brightness.setPrefix("×")
+        self.paint_brightness.setToolTip(
+            "--paint-brightness: the app stores its paint colours very dark and makes up for it with its own bright "
+            f"lighting; ×{DEFAULT_PAINT_BRIGHTNESS:g} looks closest to the app in a normally lit scene, ×1 keeps the raw "
+            "app values"
+        )
+        self.paint_brightness.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        form.addRow("Paint brightness", self.paint_brightness)
+
         for x in (self.v_perf, self.v_rhd, self.v_seats, self.separate_wheels, self.cables, self.keep_all):
             x.toggled.connect(self._refresh_command)
         self.keep_normal_y.toggled.connect(self._refresh_command)
         for c in (self.paint, self.plate, self.wheel, self.brakes):
             c.currentIndexChanged.connect(self._refresh_command)
         self.yaw.valueChanged.connect(self._refresh_command)
+        self.paint_brightness.valueChanged.connect(self._refresh_command)
         return w
 
     def _pack_page(self) -> QWidget:
@@ -435,6 +450,7 @@ class AdvancedView(QWidget):
         self.keep_all.setChecked(s.keep_all)
         self.keep_normal_y.setChecked(s.keep_normal_y)
         self.yaw.setValue(s.yaw)
+        self.paint_brightness.setValue(s.paint_brightness)
         {"all": self.pw_all, "custom": self.pw_custom}.get(s.pack_wheels, self.pw_family).setChecked(True)
         self.one_zip.setChecked(s.one_zip)
         self.split.setChecked(s.split)
@@ -467,6 +483,7 @@ class AdvancedView(QWidget):
             keep_all=self.keep_all.isChecked(),
             keep_normal_y=self.keep_normal_y.isChecked(),
             yaw=self.yaw.value(),
+            paint_brightness=self.paint_brightness.value(),
             pack_wheels="all" if self.pw_all.isChecked() else "custom" if self.pw_custom.isChecked() else "family",
             pack_wheel_names=[
                 self.pw_list.item(i).text()

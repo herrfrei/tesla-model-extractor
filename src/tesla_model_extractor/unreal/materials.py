@@ -19,6 +19,16 @@ EXT_UNLIT = "KHR_materials_unlit"
 EXT_CLEARCOAT = "KHR_materials_clearcoat"
 EXT_TEXTURE_TRANSFORM = "KHR_texture_transform"
 
+# The app's car paint colours (paint table, `opaque_skybox` / `paint_mix` shader params) are about ten times darker
+# than the paint they show: the app lights them in gamma space (Godot 3 GLES2) with its studio environment and ambient
+# light at energy 4 and gets much of the look from strong reflections at that energy. A glTF renderer lights in linear
+# space at energy 1, where the raw values come out nearly black (Pearl White #181818 → 0.009 linear, issue #2).
+# Scaling the colour in gamma space before decoding restores the brightness. 4 (the app's energy) matches the diffuse
+# part, measured against the app's studio panorama, but renders of the GLB in that panorama at strength 1 still look
+# clearly darker than the app because the reflections stay at energy 1; 8 looks closest across white, red, silver and
+# black paints (black stays black: at metallic 1 its colour only tints the reflections).
+DEFAULT_PAINT_BRIGHTNESS = 8.0
+
 GODOT_CULL_DISABLED = 2
 GODOT_BLEND_ADD = 1
 ALL_TEXCOORDS = frozenset({0, 1})
@@ -27,6 +37,13 @@ ALL_TEXCOORDS = frozenset({0, 1})
 def srgb_to_linear(c: float) -> float:
     c = min(max(c, 0.0), 1.0)
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def brighten(rgb: list[float], factor: float) -> list[float]:
+    """Scale a gamma-space colour, capping the factor where the brightest channel reaches 1 so the hue stays put."""
+    peak = max(rgb, default=0.0)
+    k = min(factor, 1.0 / peak) if peak > 0 else factor
+    return [min(1.0, x * k) for x in rgb]
 
 
 def hex_to_rgb(h: str) -> list[float]:
@@ -59,6 +76,7 @@ class MaterialBuilder:
     paint_explicit: bool = (
         False  # the user picked a paint: it also replaces shaders with their own colours (Cybertruck)
     )
+    paint_brightness: float = DEFAULT_PAINT_BRIGHTNESS
     warnings: list[str] = field(default_factory=list)
     additive: list[str] = field(default_factory=list)  # glTF material names that were additive in Godot
     _built: dict[str, int] = field(default_factory=dict)
@@ -225,9 +243,11 @@ class MaterialBuilder:
             albedo = (p.get("color") or p.get("color_bright") or [0.1, 0.1, 0.1, 1.0])[:3]
             metallic = float(p.get("metallic", p.get("metallic_bright", 0.7)))
             roughness = float(p.get("roughness", p.get("roughness_bright", 0.1)))
+        app_color = [float(x) for x in albedo[:3]]
+        lit = brighten(app_color, self.paint_brightness)
         mat: dict[str, Any] = {
             "pbrMetallicRoughness": {
-                "baseColorFactor": _rgb(albedo, albedo) + [1.0],
+                "baseColorFactor": _rgb(lit, lit) + [1.0],
                 "metallicFactor": metallic,
                 "roughnessFactor": roughness,
             },
@@ -240,8 +260,9 @@ class MaterialBuilder:
             tex = self._texture(("ao", ao, 2), lambda: self.textures.occlusion(ao, 2), f"{self._stem(ao)}_AO")
             strength = round(min(1.0, max(0.0, float(p.get("ao_intensity", 1.0)))), 4)
             mat["occlusionTexture"] = self._info(tex, 0, None, strength=strength)
+        mat["extras"] = {"app_color": [round(x, 5) for x in app_color], "paint_brightness": self.paint_brightness}
         if self.paint and (self.paint_explicit or not own_look):
-            mat["extras"] = {"paint": self.paint.name}
+            mat["extras"]["paint"] = self.paint.name
         return mat
 
     def _glass(self, d: dict[str, Any]) -> dict[str, Any]:

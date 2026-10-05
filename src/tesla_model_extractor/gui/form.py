@@ -9,6 +9,7 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
+from ..unreal.materials import DEFAULT_PAINT_BRIGHTNESS
 from ..unreal.scene import ExportOptions
 from ..validate import DEFAULT_MAX_MIB
 
@@ -35,6 +36,7 @@ class FormState:
     keep_all: bool = False
     keep_normal_y: bool = False
     yaw: float = 0.0
+    paint_brightness: float = DEFAULT_PAINT_BRIGHTNESS
     # asset pack (`extract`)
     pack_wheels: str = "family"  # family | all | custom
     pack_wheel_names: list[str] = field(default_factory=list)
@@ -62,6 +64,7 @@ class FormState:
             paint=self.paint or None,
             yaw_deg=self.yaw,
             flip_normal_green=not self.keep_normal_y,
+            paint_brightness=self.paint_brightness,
         )
 
     def pack_wheels_spec(self) -> str:
@@ -94,6 +97,8 @@ class FormState:
                     args.append(flag)
             if self.yaw:
                 args += ["--yaw", f"{self.yaw:g}"]
+            if self.paint_brightness != DEFAULT_PAINT_BRIGHTNESS:
+                args += ["--paint-brightness", f"{self.paint_brightness:g}"]
         else:
             if self.pack_wheels_spec() != "family":
                 args += ["--wheels", self.pack_wheels_spec()]

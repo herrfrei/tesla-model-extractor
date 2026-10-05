@@ -27,6 +27,8 @@ def _cli_options(state: FormState):
         FormState(source="b.apks", models=["kiwi"], paint="SolidBlack", performance=True, rhd=True, plate="us"),
         FormState(source="b.apks", wheel="none", brakes="none", keep_all=True, keep_normal_y=True, yaw=90),
         FormState(source="b.apks", wheel="Orbit19", brakes="performance", seats_7=True, yaw=-12.5),
+        FormState(source="b.apks", paint="PearlWhite", paint_brightness=2.5),
+        FormState(source="b.apks", paint_brightness=1.0),
     ],
 )
 def test_form_matches_cli(state: FormState):

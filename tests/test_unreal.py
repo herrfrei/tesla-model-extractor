@@ -340,3 +340,52 @@ def test_cli_unreal_from_recovered_and_from_pack(recovered: Path, rules_dir: Pat
     assert a.json == b.json and a.bin == b.bin
     with zipfile.ZipFile(zip_path) as z:
         assert "manifest.json" in z.namelist()
+
+
+def test_car_paint_is_brightened_like_the_app_lights_it():
+    """Issue #2: Pearl White is #181818 in the app's paint table; used as is it renders nearly black."""
+    from tesla_model_extractor.unreal.materials import DEFAULT_PAINT_BRIGHTNESS, srgb_to_linear
+
+    pearl = Paint.from_table("PearlWhite", {"albedo": "#181818", "metallic": 0.25, "roughness": 0.2})
+    desc = {"kind": "car_paint", "shader": "shaders/opaque_skybox.shader", "params": {}}
+
+    def base(brightness: float, paint: Paint = pearl, d: dict = desc) -> list[float]:
+        doc = Document.empty("t", "root")
+        mb = MaterialBuilder(doc, TextureRepacker(lambda rel: None), paint)
+        mb.paint_explicit = True
+        mb.paint_brightness = brightness
+        mat = doc.materials[mb.build("Paint.material", d)]
+        assert mat["extras"]["app_color"] == [round(24 / 255, 5)] * 3 or paint is not pearl
+        assert mat["extras"]["paint_brightness"] == brightness
+        return mat["pbrMetallicRoughness"]["baseColorFactor"][:3]
+
+    assert DEFAULT_PAINT_BRIGHTNESS == 8.0
+    assert base(DEFAULT_PAINT_BRIGHTNESS) == [round(srgb_to_linear(8 * 24 / 255), 5)] * 3  # 0.52 linear, was 0.009
+    assert base(4.0) == [0.11697] * 3
+    assert base(1.0) == [round(srgb_to_linear(24 / 255), 5)] * 3  # the raw app value: what 0.4 exported
+    bright = Paint("Bright", [0.5, 0.25, 0.0], 0.0, 0.5)
+    # capped where the brightest channel reaches 1, so the hue stays (a per-channel clip would turn it yellow)
+    assert base(4.0, bright) == [1.0, round(srgb_to_linear(0.5), 5), 0.0]
+    # the Cybertruck's own stainless colour lives in the same dark space and is brightened the same way
+    mix_desc = {
+        "kind": "car_paint",
+        "shader": "Ego/Cybertruck/Shaders/paint_mix.shader",
+        "params": {"color_bright": [0.2] * 3},
+    }
+    for k, want in ((4.0, srgb_to_linear(0.8)), (DEFAULT_PAINT_BRIGHTNESS, 1.0)):  # ×8 caps at 1 (factor 5 here)
+        doc = Document.empty("t", "root")
+        mb = MaterialBuilder(doc, TextureRepacker(lambda rel: None), pearl)
+        mb.paint_brightness = k
+        mix = doc.materials[mb.build("Paint_Mix.material", mix_desc)]
+        assert mix["pbrMetallicRoughness"]["baseColorFactor"][:3] == [round(want, 5)] * 3
+
+
+def test_paint_brightness_reaches_the_glb_and_sidecar(recovered: Path, rules_dir: Path):
+    cat = build_catalog(ResourceRoot(recovered), rules_dir)
+    res = PackBuilder(cat).build([cat.vehicle("kiwi")])
+    for k in (1.0, 2.5):
+        out = Assembler(res, ExportOptions(paint="SolidBlack", paint_brightness=k)).export_vehicle("kiwi")
+        assert out.sidecar["paint_brightness"] == k
+        doc = Document.from_glb(out.glb)
+        paints = [m for m in doc.materials if (m.get("extras") or {}).get("paint") == "SolidBlack"]
+        assert paints and all(m["extras"]["paint_brightness"] == k for m in paints)

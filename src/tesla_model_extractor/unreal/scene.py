@@ -19,7 +19,7 @@ from .. import __version__
 from ..manifest import BuildResult
 from .anim import add_animation
 from .gltf import Document, quat_mul, set_matrix, yaw_quat
-from .materials import MaterialBuilder, Paint
+from .materials import DEFAULT_PAINT_BRIGHTNESS, MaterialBuilder, Paint
 from .objmesh import add_obj_mesh
 from .textures import TextureRepacker
 
@@ -40,6 +40,7 @@ class ExportOptions:
     paint: str | None = None  # paint name from the table; None = the app's fallback paint
     yaw_deg: float = 0.0
     flip_normal_green: bool = True
+    paint_brightness: float = DEFAULT_PAINT_BRIGHTNESS  # 1 = the app's raw paint values (see materials.py)
 
 
 @dataclass
@@ -74,13 +75,18 @@ class Assembler:
         self.warnings: list[str] = []
         self.doc = Document.empty("scene", "Root")
         self.textures = TextureRepacker(self.files.read)
-        self.mats = MaterialBuilder(self.doc, self.textures, self._paint(), opt.flip_normal_green)
-        self.mats.paint_explicit = bool(opt.paint)
+        self.mats = self._materials(self._paint())
         self.hidden: set[int] = set()
         self._overridden: set[tuple[int, int]] = set()  # (mesh, primitive) with a .tscn material
         self._by_key: dict[str, int] = {}  # overrides key → index for nodes keyed by path, not by their name
 
     # ---------- setup ----------
+    def _materials(self, paint: Paint | None) -> MaterialBuilder:
+        mats = MaterialBuilder(self.doc, self.textures, paint, self.opt.flip_normal_green)
+        mats.paint_explicit = bool(self.opt.paint)
+        mats.paint_brightness = self.opt.paint_brightness
+        return mats
+
     def _paint(self) -> Paint | None:
         table = self.manifest.get("paints") or {}
         colors = table.get("colors") or {}
@@ -97,8 +103,7 @@ class Assembler:
 
     def reset(self, scene_name: str, root_name: str) -> None:
         self.doc = Document.empty(scene_name, root_name)
-        self.mats = MaterialBuilder(self.doc, self.textures, self.mats.paint, self.opt.flip_normal_green)
-        self.mats.paint_explicit = bool(self.opt.paint)
+        self.mats = self._materials(self.mats.paint)
         self.hidden = set()
         self._overridden = set()
         self._by_key = {}
@@ -309,6 +314,7 @@ class Assembler:
             "file": f"{codename}.glb",
             "units": "metres, Y-up, nose towards -Z (glTF); the importer converts to the engine's axes",
             "paint": self.mats.paint.name if self.mats.paint else None,
+            "paint_brightness": self.opt.paint_brightness,
             "paints": self.manifest.get("paints"),
             "wheel": wheel,
             "brakes": brakes,

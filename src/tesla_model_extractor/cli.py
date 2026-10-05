@@ -23,6 +23,7 @@ from .service import (
     wheel_filter_for_extract,
     wheel_option,
 )
+from .unreal.materials import DEFAULT_PAINT_BRIGHTNESS
 from .unreal.scene import DEFAULT_VARIANTS, ExportOptions
 from .validate import DEFAULT_MAX_MIB, validate_pack
 
@@ -139,6 +140,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     un.add_argument("--cables", action="store_true", help="also write the charge cables as GLBs")
     un.add_argument("--keep-normal-y", action="store_true", help="do not flip the green channel of normal maps")
+    un.add_argument(
+        "--paint-brightness",
+        type=float,
+        default=DEFAULT_PAINT_BRIGHTNESS,
+        metavar="FACTOR",
+        help=f"brighten the app's (very dark) paint colours for a normally lit scene; 1 = the raw app values "
+        f"(default {DEFAULT_PAINT_BRIGHTNESS:g})",
+    )
     un.add_argument("--yes", "-y", action="store_true", help="no interactive selection; default to the first Model Y")
     un.add_argument("--json", action="store_true", help="print a machine-readable summary to stdout")
 
@@ -357,6 +366,7 @@ def export_options(args: argparse.Namespace) -> ExportOptions:
         paint=args.paint,
         yaw_deg=args.yaw,
         flip_normal_green=not args.keep_normal_y,
+        paint_brightness=args.paint_brightness,
     )
 
 
