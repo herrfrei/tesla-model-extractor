@@ -24,11 +24,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10", "types-PyYAML"]
+gui = ["PySide6-Essentials>=6.7"]
+dev = ["pytest>=8", "pytest-qt>=4.4", "ruff>=0.6", "mypy>=1.10", "types-PyYAML"]
+build = ["pyinstaller>=6.10"]
 
 [project.scripts]
 tesla-model-extract = "tesla_model_extractor.cli:main"
 tesla-view-extract = "tesla_model_extractor.cli:main"  # name of the tool before 0.3; kept for existing docs and scripts
+
+[project.gui-scripts]
+tesla-model-extractor-gui = "tesla_model_extractor.gui:main"
 
 [project.urls]
 Homepage = "https://github.com/koenhendriks/tesla-model-extractor"
@@ -39,7 +44,7 @@ Issues = "https://github.com/koenhendriks/tesla-model-extractor/issues"
 packages = ["src/tesla_model_extractor"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "README.md", "LICENSE"]
+include = ["src", "tests", "docs", "packaging", "README.md", "LICENSE"]
 
 [tool.ruff]
 line-length = 120
