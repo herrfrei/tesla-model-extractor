@@ -115,5 +115,5 @@ jobs:
             gh release upload "$tag" release/* --clobber
           else
             pre=""; [[ "$tag" == *-* ]] && pre="--prerelease"
-            gh release create "$tag" release/* --title "$tag" --generate-notes $pre
+            gh release create "$tag" release/* --title "${tag#v}" --generate-notes $pre
           fi
