@@ -13,7 +13,8 @@ Generated files use two suffixes:
 | `<dir>/animations/<Player>.json` | one closure animation, named after its `AnimationPlayer` node |
 
 Home Assistant limits uploads to 100 MiB per zip; the extractor therefore produces one pack per vehicle by default.
-The Tesla View integration unpacks each upload into `<config>/tesla_view/packs/<pack_id>/` and merges the manifests
+`--bundle` puts several vehicles in one pack, and `--split` (what the desktop app's wizard uses) spreads them over as
+few packs as needed to keep each under the limit. The Tesla View integration unpacks each upload into `<config>/tesla_view/packs/<pack_id>/` and merges the manifests
 of all installed packs into an `index.json` for the card.
 
 ## manifest.json

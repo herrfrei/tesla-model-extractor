@@ -17,6 +17,9 @@ paint table, environment presets, marker semantics) is written next to the GLB i
 
 ## Running it
 
+In the desktop app, open **Go to advanced manual mode** and pick **GLB files**: every option below is a field there,
+and **Advanced → Same as CLI** shows the matching command.
+
 ```bash
 tesla-model-extract unreal Tesla_4.60.5.apkm --all -o unreal/               # every vehicle, default look
 tesla-model-extract unreal Tesla_4.60.5.apkm --models bayberry --paint Quicksilver --variant performance,plate_us

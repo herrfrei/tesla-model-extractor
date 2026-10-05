@@ -12,6 +12,9 @@ project with [GDRE Tools](https://github.com/GDRETools/gdsdecomp) and converts i
 | **GLB per vehicle** with materials, animations, wheels and brakes baked in, plus a JSON sidecar | Unreal Engine, Blender, Unity, three.js, any glTF importer | `tesla-model-extract unreal` |
 | **Asset pack** (zip with GLB + JSON overrides + textures + manifest) | the [Tesla View](https://github.com/koenhendriks/tesla-view) Home Assistant card | `tesla-model-extract extract` (default) |
 
+Not a terminal person? The [desktop app](#desktop-app) does the same in a window on Linux, macOS and Windows:
+drop in your bundle, tick the cars, click Export.
+
 > **You must own the app bundle.** This tool never downloads the Tesla app. Everything it produces contains
 > Tesla-owned material; use it for your own car and projects and do not redistribute it. See [LICENSE](LICENSE) for
 > the trademark note.
@@ -34,6 +37,10 @@ every open part is a glTF animation contained in the file, posed at its end fram
    own, e.g. with an APK exporter app or `adb`. Version 4.60 or newer is what this tool is tested against.
 2. Run the extractor (pick one):
 
+   **Desktop app** (no installation, no terminal): download it from the
+   [latest release](https://github.com/koenhendriks/tesla-model-extractor/releases/latest) and see
+   [Desktop app](#desktop-app) below.
+
    **Docker** (nothing to install, GDRE Tools bundled):
    ```bash
    docker run --rm -v "$PWD":/work ghcr.io/koenhendriks/tesla-model-extractor unreal /work/Tesla_4.60.5.apkm --all -o /work/unreal
@@ -47,8 +54,8 @@ every open part is a glTF animation contained in the file, posed at its end fram
    tesla-model-extract unreal Tesla_4.60.5.apkm --models bayberry --paint Quicksilver -o unreal/
    ```
 
-The first run takes a few minutes: GDRE recovers the whole 450 MB Godot project. Pass `--keep-recovered DIR` to reuse
-it for later runs (`--recovered DIR` skips straight to conversion).
+The first run takes a few minutes: GDRE recovers the whole 450 MB Godot project (≈ 1.4 GB once recovered). Pass
+`--keep-recovered DIR` to reuse it for later runs (`--recovered DIR` skips straight to conversion).
 
 ```
 $ tesla-model-extract list Tesla_4.60.5.apkm
@@ -61,6 +68,68 @@ $ tesla-model-extract list Tesla_4.60.5.apkm
  model3_high   Model 3 (2017–2023)                    3_High       model3                                      …
  model_s / s_palladium / model_x / x_palladium / cybertruck / semi …
 ```
+
+## Desktop app
+
+![The desktop app's wizard: tick the cars you want from the bundle](docs/images/desktop-app.webp)
+
+Every [release](https://github.com/koenhendriks/tesla-model-extractor/releases/latest) has a ready-to-run app; it
+contains Python and everything else it needs, and downloads GDRE Tools (pinned version, checksum-verified) on first
+use.
+
+| system | download | first start |
+|---|---|---|
+| Windows 10/11 (x64) | `tesla-model-extractor-<version>-windows-x64.exe` | SmartScreen says "Windows protected your PC": click **More info → Run anyway** |
+| macOS 11+ (Apple Silicon) | `tesla-model-extractor-<version>-macos-arm64.zip` | unzip, then see the note below |
+| macOS 11+ (Intel) | `tesla-model-extractor-<version>-macos-x86_64.zip` | unzip, then see the note below |
+| Linux (x86_64, desktop with X11 or Wayland) | `tesla-model-extractor-<version>-linux-x86_64` | make it executable (file properties → *Allow executing*, or `chmod +x`), then double-click or run it |
+
+The binaries are not signed with a paid Apple / Microsoft certificate, which is why the system asks once. On macOS,
+right-click (or Control-click) **Tesla Model Extractor.app → Open → Open**; on macOS 15 and newer, open it once,
+then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or clear the download flag in a
+terminal: `xattr -dr com.apple.quarantine "Tesla Model Extractor.app"`. `SHA256SUMS` in the release lists the
+checksums of all files.
+
+The app opens in a **wizard** that makes a Home Assistant asset pack; **Back** returns to the previous step at any
+point:
+
+1. **Drop your bundle** on the window, or click the box (or **Choose file…**) to pick it.
+2. Reading the bundle **starts by itself**. The first time takes a few minutes and needs about 2 GB of free disk
+   space; the recovered project (≈ 1.4 GB) is kept, so the same bundle opens instantly next time. **Clear cache** on
+   the first step (it shows how much space the kept bundles take) deletes them all.
+3. **Tick the cars** you want (name, size and whether the bundle contains them) and click **Next**.
+4. **Choose the folder** and click **Export**; the log shows what is being converted and written. You get one zip with
+   all selected cars and the wheels of each car's family. Home Assistant accepts up to 100 MiB per upload, so when the
+   cars together would be larger, the app measures each car (shared wheels and cables counted once) and spreads them
+   over as few zips as needed; all twelve cars of app 4.60.5 become two zips of about 95 MiB. Upload each zip in Home
+   Assistant under **Settings → Devices & services → Tesla View → Configure → Upload asset pack**.
+
+**Go to advanced manual mode** on the first step opens every option on one page: GLB files for Blender, Unreal,
+Unity or three.js with paint, look, wheels and brakes, one pack per car, size limits, your own GDRE Tools, extra
+rules and the recovery cache. A bundle the wizard already read carries over, and **Back to the simple wizard**
+returns. The advanced mode also accepts an asset pack zip made earlier, to turn it into GLB files
+without the bundle.
+
+![The advanced manual mode: every option on one page](docs/images/desktop-app-advanced.webp)
+
+The advanced options map one to one onto the command line; **Advanced → Same as CLI** shows the equivalent
+`tesla-model-extract` command:
+
+| in the app | CLI |
+|---|---|
+| Paint | `unreal --paint NAME` |
+| Look: Performance, Right-hand drive, 7 seats, EU / US plate | `unreal --variant performance,rhd,seats_7,plate_eu\|plate_us` |
+| Wheels / Brakes (GLB) | `unreal --wheels default\|none\|NAME`, `--brakes default\|none\|SET` |
+| Extras: separate wheel GLBs, charge cables, keep every part, keep normal-map green | `--separate-wheels`, `--cables`, `--keep-all`, `--keep-normal-y` |
+| Rotate | `unreal --yaw DEG` |
+| Wheels (asset pack): family / every wheel / only these | `extract --wheels family\|all\|NAME,…` |
+| One zip for all (…split when over the size limit), unzipped folder, size limit | `extract --bundle` (`--split`), `--dir`, `--max-size MIB` |
+| Advanced: GDRE Tools, never download, extra rules | `--gdre PATH`, `--no-download`, `--rules DIR` |
+
+On Linux and macOS the same binary also runs the CLI when given a command, e.g.
+`./tesla-model-extractor-<version>-linux-x86_64 list Tesla_4.60.5.apkm`. With Python, `pip install
+"tesla-model-extractor[gui] @ git+https://github.com/koenhendriks/tesla-model-extractor"` installs the app as
+`tesla-model-extractor-gui` (or `tesla-model-extract gui`).
 
 ## GLB export (Unreal Engine, Blender, any glTF importer)
 
@@ -111,7 +180,7 @@ are listed under `warnings` in the manifest.
 
 ```
 tesla-model-extract [extract] <bundle|recovered-dir> [-o OUT] [--models ID[,ID]] [--all] [--wheels family|all|NAME,…]
-                    [--bundle] [--dir] [--max-size MIB] [--keep-recovered DIR | --recovered DIR]
+                    [--bundle | --split] [--dir] [--max-size MIB] [--keep-recovered DIR | --recovered DIR]
                     [--gdre PATH] [--no-download] [--rules DIR] [--yes] [--json]
 tesla-model-extract unreal   <bundle|recovered-dir|pack.zip> [-o DIR] [--models ID[,ID]] [--all] [--paint NAME]
                     [--variant V[,V]] [--wheels default|NAME|none] [--brakes default|SET|none]
@@ -119,17 +188,19 @@ tesla-model-extract unreal   <bundle|recovered-dir|pack.zip> [-o DIR] [--models 
 tesla-model-extract list     <bundle|recovered-dir>        # vehicles, wheels, paints in the bundle
 tesla-model-extract inspect  <bundle|recovered-dir> <id>   # bindings / animation players / markers of one scene
 tesla-model-extract validate <pack.zip|dir>                # asset pack: schema, referenced files, node names, size
+tesla-model-extract gui                                    # the desktop app (needs the `gui` extra)
 ```
 
 | option | meaning |
 |---|---|
 | `--models bayberry,bayberry_e41` | which vehicles (ids, codenames or aliases such as `juniper`). Default: interactive, or the first Model Y with `--yes` |
 | `--all` | every vehicle in the bundle |
-| `--keep-recovered DIR` / `--recovered DIR` | keep / reuse the GDRE recovery (≈ 450 MB) |
+| `--keep-recovered DIR` / `--recovered DIR` | keep / reuse the GDRE recovery (≈ 1.4 GB) |
 | `--gdre PATH`, `--no-download` | use your own GDRE Tools binary; never download it |
 | `--rules DIR` | extra `<codename>.yaml` rules (see [docs/rules.md](docs/rules.md)) |
 | `--wheels family` (extract) | (default) all wheel scenes of the vehicle's wheel family; `all` = every wheel; or a list of API names (`Crossflow19,HelixV220`) |
 | `--bundle` (extract) | one zip with all selected models; fails validation when it exceeds `--max-size` (100 MiB, the HA upload limit) |
+| `--split` (extract) | like `--bundle`, but spreads the models over as few zips as needed to keep each under `--max-size` (what the desktop app's wizard does) |
 | `--dir` (extract) | write an unzipped pack directory (for development against the card) |
 
 Reproducible builds: set `SOURCE_DATE_EPOCH` to pin `generated_at`; everything else is deterministic.
@@ -159,12 +230,31 @@ The command was called `tesla-view-extract` before 0.3; that name still works.
 ## Development
 
 ```bash
-uv venv && uv pip install -e ".[dev]"      # or python -m venv .venv && pip install -e ".[dev]"
+uv venv && uv pip install -e ".[dev,gui]"  # or python -m venv .venv && pip install -e ".[dev,gui]"
 pytest -q                                    # synthetic fixtures only: no Tesla content in this repo
-ruff check src tests && mypy
+ruff check src tests packaging && mypy
 python scripts/check_no_assets.py            # CI guard against accidentally committed app material
 tesla-model-extract compare-legacy pack.zip <old assets dir>   # regression check against a known-good pack
+tesla-model-extract gui                      # run the desktop app from the checkout
 ```
+
+The GUI tests run headless with `QT_QPA_PLATFORM=offscreen`. The pipeline both front ends share lives in
+`service.py`; the CLI (`cli.py`) and the app (`gui/`) only collect options and show results.
+
+Building the desktop binary for the machine you are on (the
+[Desktop app workflow](.github/workflows/release.yml) does this for Linux, Windows and both macOS architectures):
+
+```bash
+pip install -e ".[gui,build]"
+python packaging/make_icon.py build                        # icon.png / .ico / .icns, drawn in code
+pyinstaller --noconfirm packaging/tesla-model-extractor.spec
+dist/tesla-model-extractor --smoke                         # macOS: "dist/Tesla Model Extractor.app/Contents/MacOS/tesla-model-extractor"
+```
+
+Releasing: bump the version in `pyproject.toml` and `src/tesla_model_extractor/__init__.py`, commit, and push a
+`vX.Y.Z` tag. The tag publishes the Docker image and builds the four binaries into a GitHub Release with a
+`SHA256SUMS` file (a `vX.Y.Z-rc1` style tag makes a pre-release). Pull requests that touch the app or its packaging
+build the binaries without releasing them.
 
 Adding support for a vehicle: run `tesla-model-extract inspect <bundle> <codename>` to see its bindings, animation
 players and markers, then write `rules/<codename>.yaml` (see [docs/rules.md](docs/rules.md)).

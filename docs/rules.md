@@ -2,7 +2,8 @@
 
 The scene converter finds *what* is in a vehicle scene; the rules say what it *means* for the card. Rules live in
 `src/tesla_model_extractor/rules/`: `_default.yaml` applies to every scene, `<codename>.yaml` is deep-merged on top
-for one vehicle. Pass `--rules DIR` to add or override files without changing the package.
+for one vehicle. Pass `--rules DIR` (in the desktop app: **Advanced → Extra rules**) to add or override files without
+changing the package.
 
 ## Bindings are the key
 
