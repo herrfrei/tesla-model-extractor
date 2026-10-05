@@ -3,6 +3,7 @@
 # Output in dist/: Linux `tesla-model-extractor`, Windows `tesla-model-extractor.exe` (both one file),
 # macOS `Tesla Model Extractor.app` (PyInstaller does not support one-file .app bundles).
 import sys
+import sysconfig
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
@@ -26,6 +27,39 @@ a = Analysis(
     excludes=["tkinter", "unittest", "pydoc", "PySide6.QtNetwork", "PySide6.QtQml", "PySide6.QtQuick"],
     noarchive=False,
 )
+if sys.platform.startswith("linux"):
+    # Desktop libraries (fontconfig, freetype, GLib, GTK, X11, libstdc++ …) must come from the user's system, not
+    # from the older build machine: an old fontconfig cannot parse a newer distribution's font configuration (no
+    # fonts, a screen full of "Fontconfig error"), and an old libstdc++ breaks the system's GL drivers. Qt itself is
+    # bundled from the PySide6 wheel, which expects exactly these from the system. Kept: libraries Python needs that a
+    # desktop may not have in this version, and the xcb helpers Qt's X11 plugin needs that minimal installs miss.
+    SYSTEM_DIRS = ("/lib/", "/lib64/", "/usr/lib/", "/usr/lib64/")
+    KEEP_FROM_SYSTEM = (
+        "libssl.so",
+        "libcrypto.so",
+        "libffi.so",
+        "libxcb-cursor.so",
+        "libxcb-icccm.so",
+        "libxcb-image.so",
+        "libxcb-keysyms.so",
+        "libxcb-render-util.so",
+        "libxcb-util.so",
+        "libxkbcommon-x11.so",
+    )
+    # A system Python (a local build on most distributions) lives in /usr/lib too: its libpython, stdlib extension
+    # modules and site-packages (with PySide6's Qt) are part of the app, not desktop libraries.
+    PYTHON_DIRS = tuple(
+        {str(Path(sysconfig.get_paths()[k]).resolve()) + "/" for k in ("stdlib", "platstdlib", "purelib", "platlib")}
+    )
+
+    def _from_desktop(name, src):
+        src = str(Path(src).resolve())
+        if not src.startswith(SYSTEM_DIRS) or src.startswith(PYTHON_DIRS):
+            return False
+        return not Path(name).name.startswith(("libpython", *KEEP_FROM_SYSTEM))
+
+    a.binaries = [(name, src, kind) for name, src, kind in a.binaries if not _from_desktop(name, src)]
+
 pyz = PYZ(a.pure)
 
 if IS_MAC:

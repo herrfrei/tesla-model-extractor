@@ -27,6 +27,7 @@ def _ensure_streams() -> None:
 
 def _smoke() -> int:
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtGui import QFontDatabase, QFontInfo
     from PySide6.QtWidgets import QApplication
 
     from tesla_model_extractor import GDRE_VERSION, __version__
@@ -38,7 +39,13 @@ def _smoke() -> int:
     win.show()
     app.processEvents()
     assert default_rules(), "bundled rules/_default.yaml missing"
-    print(f"tesla-model-extractor {__version__} (GDRE Tools {GDRE_VERSION}): {len(all_codename_rules())} rules files")
+    families = QFontDatabase.families()
+    # Linux reads fonts through the system's fontconfig; a bundled copy that cannot parse its config finds none
+    assert families or not sys.platform.startswith("linux"), "Qt found no fonts (fontconfig)"
+    print(
+        f"tesla-model-extractor {__version__} (GDRE Tools {GDRE_VERSION}): {len(all_codename_rules())} rules files, "
+        f"{len(families)} font families, UI font {QFontInfo(app.font()).family()!r}"
+    )
     win.close()
     return 0
 
