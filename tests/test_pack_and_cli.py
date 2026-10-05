@@ -114,3 +114,11 @@ def test_cli_non_tty_without_selection_exits_2(recovered: Path, rules_dir: Path,
     with pytest.raises(SystemExit) as ex:
         main([str(recovered), "--rules", str(rules_dir), "-o", str(tmp_path / "x"), "--no-download"])
     assert ex.value.code == 2
+
+
+def test_cli_extract_split(recovered: Path, rules_dir: Path, tmp_path: Path):
+    out = tmp_path / "packs"
+    rc = main(
+        [str(recovered), "--rules", str(rules_dir), "--models", "kiwi", "--split", "-o", str(out), "--no-download"]
+    )
+    assert rc == 0 and (out / "tesla-view-pack-kiwi.zip").exists()

@@ -6,20 +6,23 @@ import argparse
 import json
 import logging
 import sys
-import tempfile
 from pathlib import Path
 
 from . import GDRE_VERSION, __version__
-from .bundle import BundleError, detect, recover
-from .catalog import Catalog, build_catalog, resolve_wheel_family
-from .gdre import Gdre, GdreError
-from .godot.resolve import ResourceRoot
+from .catalog import Catalog, resolve_wheel_family
 from .legacy import compare_legacy
-from .manifest import PackBuilder, summarize_model
-from .pack import write_dir, write_zip
 from .report import console, print_warnings, vehicle_table
-from .unreal.export import export_pack
-from .unreal.packsource import is_pack, load_pack
+from .service import (
+    ExtractError,
+    Session,
+    build_pack,
+    export_glb,
+    open_source,
+    pack_targets,
+    plan_zip_groups,
+    wheel_filter_for_extract,
+    wheel_option,
+)
 from .unreal.scene import DEFAULT_VARIANTS, ExportOptions
 from .validate import DEFAULT_MAX_MIB, validate_pack
 
@@ -75,6 +78,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     ex.add_argument(
         "--bundle", action="store_true", help="one zip with all selected models (default: one zip per model)"
+    )
+    ex.add_argument(
+        "--split",
+        action="store_true",
+        help="like --bundle, but spread the models over as few zips as needed to keep each under --max-size",
     )
     ex.add_argument("--dir", action="store_true", help="write an unzipped pack directory instead of a zip")
     ex.add_argument(
@@ -141,44 +149,38 @@ def _parser() -> argparse.ArgumentParser:
     cl = sub.add_parser("compare-legacy", help="compare a pack with the pre-pack Tesla View asset folder (dev aid)")
     cl.add_argument("pack")
     cl.add_argument("legacy_dir")
+
+    sub.add_parser("gui", help="open the desktop app (needs the `gui` extra: pip install 'tesla-model-extractor[gui]')")
     return p
 
 
-def _root(args: argparse.Namespace) -> tuple[ResourceRoot, str | None]:
-    """Resolve the source to a recovered project + app version (running GDRE if needed)."""
-    gdre: Gdre | None = None
+def _notify(level: str, msg: str) -> None:
+    if level == "warning":
+        head, _, rest = msg.partition(": ")
+        console.print(f"[yellow]{head}:[/] {rest}" if rest else f"[yellow]{msg}[/]")
+    else:
+        console.print(f"[dim]{msg}[/]")
+
+
+def _session(args: argparse.Namespace, accept_pack: bool = False) -> Session:
+    """Resolve the source to a recovered project + catalog (running GDRE if needed); exits on failure."""
     try:
-        gdre = Gdre.locate(args.gdre, allow_download=not args.no_download)
-    except GdreError as e:
-        console.print(f"[yellow]GDRE Tools unavailable:[/] {e}")
-    src = Path(args.source)
-    try:
-        info = detect(src)
-    except BundleError as e:
+        session = open_source(
+            args.source,
+            recovered=args.recovered,
+            keep_recovered=args.keep_recovered,
+            gdre_path=args.gdre,
+            allow_download=not args.no_download,
+            rules_dir=args.rules,
+            accept_pack=accept_pack,
+            notify=_notify,
+        )
+    except ExtractError as e:
         console.print(f"[red]{e}[/]")
         sys.exit(EXIT_ERROR)
-    app_version = info.app_version
-    if args.recovered:
-        recovered = Path(args.recovered)
-    elif info.kind == "recovered":
-        recovered = info.source
-    else:
-        if gdre is None:
-            console.print("[red]a bundle needs GDRE Tools for recovery – pass --gdre PATH or allow the download[/]")
-            sys.exit(EXIT_ERROR)
-        work = Path(args.keep_recovered).parent if args.keep_recovered else Path(tempfile.mkdtemp(prefix="tve-"))
-        keep = Path(args.keep_recovered) if args.keep_recovered else None
-        console.print(f"[dim]unpacking {src.name} …[/]")
-        try:
-            recovered = recover(src, work, gdre, keep)
-        except (BundleError, GdreError) as e:
-            console.print(f"[red]{e}[/]")
-            sys.exit(EXIT_ERROR)
-        console.print(f"[dim]recovered project: {recovered}[/]")
-        if keep is None:
-            console.print("[dim]tip: pass --keep-recovered DIR to reuse the recovery next time[/]")
-    root = ResourceRoot(recovered, gdre)
-    return root, app_version
+    if session.kind in ("bundle", "apk", "godot_root") and not args.recovered and not args.keep_recovered:
+        console.print("[dim]tip: pass --keep-recovered DIR to reuse the recovery next time[/]")
+    return session
 
 
 def _select(cat: Catalog, args: argparse.Namespace) -> list:
@@ -219,66 +221,57 @@ def _must(cat: Catalog, key: str):
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
-    root, app_version = _root(args)
-    cat = build_catalog(root, Path(args.rules) if args.rules else None)
+    session = _session(args)
+    cat = session.catalog
+    assert cat is not None
     print_warnings(cat.warnings, "catalog warnings")
     vehicles = _select(cat, args)
-    wheel_filter: list[str] | None
-    if args.wheels == "family":
-        wheel_filter = None
-    elif args.wheels == "all":
-        wheel_filter = [w.api_name for w in cat.wheels if w.present]
-    else:
-        wheel_filter = [w.strip() for w in args.wheels.split(",")]
-    groups = [vehicles] if args.bundle or len(vehicles) == 1 else [[v] for v in vehicles]
-    out_arg = Path(args.output) if args.output else Path("packs")
+    wheel_filter = wheel_filter_for_extract(cat, args.wheels)
+    groups, built = None, None
+    if args.split and not args.dir:
+        groups, built = plan_zip_groups(session, vehicles, wheel_filter, args.max_size, notify=_notify)
+    targets = pack_targets(
+        vehicles,
+        Path(args.output) if args.output else None,
+        bundle=args.bundle or args.split,
+        as_dir=args.dir,
+        app_version=session.app_version,
+        groups=groups,
+    )
     results = []
-    for group in groups:
-        builder = PackBuilder(cat)
-        res = builder.build(group, wheel_filter)
-        res.manifest["app_version"] = app_version
-        res.files["manifest.json"] = (json.dumps(res.manifest, indent=1, ensure_ascii=False) + "\n").encode()
-        ids = "-".join(v.id for v in group)
-        if len(groups) == 1 and args.output and (out_arg.suffix == ".zip" or args.dir):
-            target = out_arg
-        else:
-            suffix = "" if args.dir else ".zip"
-            target = out_arg / f"tesla-view-pack-{ids}{('-' + app_version) if app_version else ''}{suffix}"
-        for v in group:
-            console.print(f"[bold]{v.id}[/]: {summarize_model(res.manifest['models'][v.id])}")
-        print_warnings(res.warnings, f"{ids} warnings")
-        if res.missing:
-            print_warnings(res.missing, f"{ids}: referenced files not found in the recovered project")
+    for group, target in targets:
+        out = build_pack(
+            session,
+            group,
+            wheel_filter,
+            target,
+            as_dir=args.dir,
+            max_mib=args.max_size,
+            built=built if len(targets) == 1 else None,
+        )
+        ids = "-".join(out.models)
+        for mid, text in out.summaries.items():
+            console.print(f"[bold]{mid}[/]: {text}")
+        print_warnings(out.warnings, f"{ids} warnings")
+        if out.missing:
+            print_warnings(out.missing, f"{ids}: referenced files not found in the recovered project")
+        st = out.stats
         if args.dir:
-            st = write_dir(res, target)
             console.print(f"[green]wrote[/] {target}  ({st.files} files, {st.raw_mib:.1f} MiB)")
-            rep = validate_pack(target, args.max_size)
         else:
-            st = write_zip(res, target)
             console.print(
                 f"[green]wrote[/] {target}  ({st.files} files, {st.raw_mib:.1f} MiB raw → {st.zip_mib:.1f} MiB zip)"
             )
-            rep = validate_pack(target, args.max_size)
-        print_warnings(rep.warnings, "validation warnings")
-        if not rep.ok:
-            for e in rep.errors:
+        print_warnings(out.validation.warnings, "validation warnings")
+        if not out.validation.ok:
+            for e in out.validation.errors:
                 console.print(f"[red]✗ {e}[/]")
-            if len(groups) == 1 and len(group) > 1:
+            if len(targets) == 1 and len(group) > 1:
                 console.print("[red]hint: drop --bundle to get one pack per model[/]")
             return EXIT_INVALID
-        results.append(
-            {
-                "pack": str(target),
-                "models": [v.id for v in group],
-                "files": st.files,
-                "raw_bytes": st.raw_bytes,
-                "zip_bytes": st.zip_bytes,
-                "sha256": st.sha256,
-                "warnings": res.warnings,
-            }
-        )
+        results.append(out.summary())
     if args.json:
-        print(json.dumps({"app_version": app_version, "packs": results}, indent=1))
+        print(json.dumps({"app_version": session.app_version, "packs": results}, indent=1))
     console.print(
         "[green]done.[/] Upload the zip in Home Assistant: Settings → Devices & services → Tesla View → Configure → Upload asset pack"
     )
@@ -286,8 +279,9 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    root, app_version = _root(args)
-    cat = build_catalog(root, Path(args.rules) if args.rules else None)
+    session = _session(args)
+    cat, app_version = session.catalog, session.app_version
+    assert cat is not None
     if args.json:
         print(
             json.dumps(
@@ -327,12 +321,13 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
-    root, _ = _root(args)
-    cat = build_catalog(root, Path(args.rules) if args.rules else None)
+    session = _session(args)
+    cat = session.catalog
+    assert cat is not None
     v = _must(cat, args.vehicle)
     from .convert.scene import convert_scene
 
-    res = convert_scene(root, v.scene)
+    res = convert_scene(cat.root, v.scene)
     f = res.facts
     out = {
         "scene": v.scene,
@@ -353,48 +348,42 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_unreal(args: argparse.Namespace) -> int:
-    src = Path(args.source)
-    if is_pack(src):
-        res = load_pack(src)
-        app_version = res.manifest.get("app_version")
-        ids = list(res.manifest.get("models", {}))
-        if args.models:
-            wanted = [k.strip().lower() for k in args.models.split(",")]
-            ids = [
-                i
-                for i in ids
-                if i in wanted
-                or str(res.manifest["models"][i].get("codename", "")).lower() in wanted
-                or any(a.lower() in wanted for a in res.manifest["models"][i].get("aliases", []))
-            ]
-            if len(ids) != len(wanted):
-                console.print(f"[red]pack contains {sorted(res.manifest.get('models', {}))}, not all of {wanted}[/]")
-                return EXIT_ERROR
-    else:
-        root, app_version = _root(args)
-        cat = build_catalog(root, Path(args.rules) if args.rules else None)
-        print_warnings(cat.warnings, "catalog warnings")
-        vehicles = _select(cat, args)
-        wheel_filter: list[str] | None = None
-        if args.wheels not in ("default", "none"):
-            wheel_filter = [w.strip() for w in args.wheels.split(",")]
-            wheel_filter += [w.api_name for w in cat.wheels if w.present]  # keep the families for --separate-wheels
-        res = PackBuilder(cat).build(vehicles, wheel_filter)
-        res.manifest["app_version"] = app_version
-        print_warnings(res.warnings, "pack warnings")
-        ids = [v.id for v in vehicles]
-    opt = ExportOptions(
+def export_options(args: argparse.Namespace) -> ExportOptions:
+    return ExportOptions(
         variants=frozenset(v.strip() for v in args.variant.split(",") if v.strip()),
         keep_all=args.keep_all,
-        wheel=None if args.wheels == "none" else args.wheels.split(",")[0],
+        wheel=wheel_option(args.wheels),
         brakes=None if args.brakes == "none" else args.brakes,
         paint=args.paint,
         yaw_deg=args.yaw,
         flip_normal_green=not args.keep_normal_y,
     )
-    outputs = export_pack(res, ids, opt, Path(args.output), args.separate_wheels, args.cables)
-    for o in outputs:
+
+
+def cmd_unreal(args: argparse.Namespace) -> int:
+    session = _session(args, accept_pack=True)
+    ids: list[str] | None
+    if session.is_pack:
+        ids = args.models.split(",") if args.models else None
+    else:
+        assert session.catalog is not None
+        print_warnings(session.catalog.warnings, "catalog warnings")
+        ids = [v.id for v in _select(session.catalog, args)]
+    try:
+        result = export_glb(
+            session,
+            ids,
+            export_options(args),
+            Path(args.output),
+            wheels=args.wheels,
+            separate_wheels=args.separate_wheels,
+            cables=args.cables,
+        )
+    except ExtractError as e:
+        console.print(f"[red]{e}[/]")
+        return EXIT_ERROR
+    print_warnings(result.warnings, "pack warnings")
+    for o in result.outputs:
         console.print(
             f"[green]wrote[/] {o.glb}  ({o.glb_bytes / 1048576:.1f} MiB, {o.animations} animations"
             + (f", {len(o.wheels)} wheel GLBs" if o.wheels else "")
@@ -403,27 +392,7 @@ def cmd_unreal(args: argparse.Namespace) -> int:
         )
         print_warnings(o.warnings, f"{o.model} warnings")
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "app_version": app_version,
-                    "vehicles": [
-                        {
-                            "model": o.model,
-                            "folder": str(o.folder),
-                            "glb": str(o.glb),
-                            "glb_bytes": o.glb_bytes,
-                            "animations": o.animations,
-                            "wheels": o.wheels,
-                            "cables": o.cables,
-                            "warnings": o.warnings,
-                        }
-                        for o in outputs
-                    ],
-                },
-                indent=1,
-            )
-        )
+        print(json.dumps(result.summary(), indent=1))
     console.print("[green]done.[/] Import guide: docs/unreal-export.md (each folder has an unreal.json sidecar)")
     return EXIT_OK
 
@@ -468,6 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         "unreal",
         "validate",
         "compare-legacy",
+        "gui",
         "-h",
         "--help",
         "--version",
@@ -482,6 +452,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd is None:
         _parser().print_help()
         return EXIT_ERROR
+    if args.cmd == "gui":
+        from .gui import main as gui_main
+
+        return gui_main()
     return {
         "extract": cmd_extract,
         "list": cmd_list,

@@ -153,6 +153,7 @@ class PackBuilder:
         }
         families: set[str] = set()
         for v in vehicles:
+            log.info("converting %s (%s)", v.name, v.scene)
             model, fam = self.build_model(v)
             manifest["models"][v.id] = model
             if fam:
@@ -167,9 +168,13 @@ class PackBuilder:
                     wanted.append(w)
             elif w.family in families:
                 wanted.append(w)
+        if wanted:
+            log.info("adding %d wheels: %s", len(wanted), ", ".join(w.api_name for w in wanted))
         for w in wanted:
             manifest["wheels"][w.api_name] = self.build_wheel(w.scene, w.enum_name, w.family)
         # cables
+        if cat.options.cable_map:
+            log.info("adding charge cables: %s", ", ".join(cat.options.cable_map))
         for port, sc in cat.options.cable_map.items():
             if not self.root.exists(sc):
                 self.out.warnings.append(f"cable scene missing: {sc}")

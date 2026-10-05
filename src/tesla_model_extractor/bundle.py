@@ -126,18 +126,22 @@ def extract_godot_root(source: Path, work: Path) -> Path:
     return dest
 
 
-def recover(source: Path, work: Path, gdre: Gdre, keep: Path | None = None) -> Path:
-    """Full pipeline: bundle → godot root → GDRE recover → recovered project dir."""
+def recover(source: Path, work: Path, gdre: Gdre, keep: Path | None = None, drop_godot_root: bool = False) -> Path:
+    """Full pipeline: bundle → godot root → GDRE recover → recovered project dir.
+
+    `drop_godot_root` deletes the extracted `assets/godot` copy (≈ 460 MB) once the recovery succeeded."""
     info = detect(source)
     if info.kind == "recovered":
         return info.source
-    godot_root = extract_godot_root(source, work)
     out = keep or (work / "recovered")
     if (out / "project.godot").exists() and (out / "mobile").exists():
         log.info("reusing recovered project at %s", out)
         return out
+    godot_root = extract_godot_root(source, work)
     log.info("running GDRE Tools recovery (this takes a few minutes)…")
     gdre.recover(godot_root, out)
     if not (out / "mobile" / "scripts").exists():
         raise BundleError(f"GDRE recovery did not produce the expected project layout in {out}")
+    if drop_godot_root and godot_root == work / "godot_root":
+        shutil.rmtree(godot_root, ignore_errors=True)
     return out

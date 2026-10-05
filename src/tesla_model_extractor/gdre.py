@@ -12,7 +12,8 @@ import subprocess
 import sys
 import urllib.request
 import zipfile
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import GDRE_VERSION
@@ -39,6 +40,16 @@ class GdreError(RuntimeError):
     pass
 
 
+class GdreCancelled(GdreError):
+    pass
+
+
+Progress = Callable[[int, int], None]
+
+# A GUI build has no console; without this every GDRE call would flash a console window on Windows.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def host_os() -> str:
     s = sys.platform
     if s.startswith("linux"):
@@ -57,14 +68,31 @@ def cache_dir() -> Path:
     return old if old.exists() and not new.exists() else new
 
 
+def recovered_cache_root() -> Path:
+    return cache_dir().parent / "recovered"
+
+
+def recovered_cache_dir(source: Path, app_version: str | None = None) -> Path:
+    """Where the desktop app keeps the recovery of a bundle, so reopening the same file skips GDRE.
+
+    Returns `<root>/<key>/project`: the unpacked `godot_root` lands next to it in `<key>/`, so two bundles never
+    share (and wrongly reuse) one extraction."""
+    st = source.stat()
+    key = hashlib.sha1(f"{source.name}|{st.st_size}|{int(st.st_mtime)}".encode()).hexdigest()[:12]
+    name = f"{app_version}-{key}" if app_version else key
+    return recovered_cache_root() / name / "project"
+
+
 @dataclass
 class Gdre:
     binary: Path
     version: str = GDRE_VERSION
+    _proc: subprocess.Popen[str] | None = field(default=None, init=False, repr=False, compare=False)
+    _cancelled: bool = field(default=False, init=False, repr=False, compare=False)
 
     # ---------- locating ----------
     @classmethod
-    def locate(cls, explicit: str | None = None, allow_download: bool = True) -> Gdre:
+    def locate(cls, explicit: str | None = None, allow_download: bool = True, progress: Progress | None = None) -> Gdre:
         """--gdre PATH → $GDRE_TOOLS → PATH → cache → download."""
         candidates: list[Path] = []
         if explicit:
@@ -86,7 +114,7 @@ class Gdre:
                 "GDRE Tools not found. Install it from https://github.com/GDRETools/gdsdecomp/releases and pass "
                 "--gdre PATH (or set $GDRE_TOOLS), or allow the download."
             )
-        return cls(download(os_name))
+        return cls(download(os_name, progress=progress))
 
     # ---------- running ----------
     def run(self, args: list[str], timeout: int = 3600) -> subprocess.CompletedProcess[str]:
@@ -94,7 +122,38 @@ class Gdre:
         log.debug("running %s", " ".join(cmd))
         env = dict(os.environ)
         env.setdefault("XDG_DATA_HOME", str(cache_dir() / "xdg"))  # keep Godot's user:// out of the real home
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        if self._cancelled:
+            raise GdreCancelled("cancelled")
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            creationflags=_NO_WINDOW,
+        ) as proc:
+            self._proc = proc
+            try:
+                out, err = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                out, err = proc.communicate()
+                raise subprocess.TimeoutExpired(cmd, timeout, out, err) from None
+            finally:
+                self._proc = None
+        if self._cancelled:
+            raise GdreCancelled("cancelled")
+        return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+    def terminate(self) -> None:
+        """Stop the running GDRE process (if any) and refuse further runs; safe to call from another thread."""
+        self._cancelled = True
+        proc = self._proc
+        if proc is not None and proc.poll() is None:
+            proc.kill()
 
     def version_string(self) -> str:
         r = self.run(["--version"], timeout=120)
@@ -147,7 +206,9 @@ class Gdre:
             pending = rest
 
 
-def download(os_name: str, version: str = GDRE_VERSION, dest: Path | None = None) -> Path:
+def download(
+    os_name: str, version: str = GDRE_VERSION, dest: Path | None = None, progress: Progress | None = None
+) -> Path:
     if version not in RELEASES or os_name not in RELEASES[version]:
         raise GdreError(f"no pinned GDRE release for {os_name} v{version}")
     dest = dest or (cache_dir() / f"v{version}")
@@ -159,7 +220,13 @@ def download(os_name: str, version: str = GDRE_VERSION, dest: Path | None = None
     zip_path = dest / "gdre.zip"
     log.info("downloading GDRE Tools v%s for %s", version, os_name)
     with urllib.request.urlopen(url, timeout=120) as resp, open(zip_path, "wb") as out:  # noqa: S310 – pinned https URL
-        shutil.copyfileobj(resp, out)
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        while chunk := resp.read(1 << 20):
+            out.write(chunk)
+            done += len(chunk)
+            if progress:
+                progress(done, total)
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     expected = RELEASES[version][os_name]
     if digest != expected:
