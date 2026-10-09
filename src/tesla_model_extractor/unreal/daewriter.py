@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import struct
+from collections import Counter
 from dataclasses import dataclass, field
 from xml.sax.saxutils import escape
 
@@ -112,7 +113,6 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
     instances_xml: list[str] = []  # <node> entries under the visual scene
 
     mat_ref_ids: dict[int, str] = {}  # glTF material index -> collada material id (one effect+material per glTF mat)
-    mat_img_ids: dict[int, str] = {}
 
     def material_ids(mi: int) -> tuple[str, str]:
         """Create (once) the <effect>/<material> pair for a glTF material index, returning (effect_id, material_id)."""
@@ -206,7 +206,6 @@ def _geometry_xml(
     if has_uvs and uvs:
         inputs.append(f'<input semantic="TEXCOORD" source="#{uv_src}" offset="{offset}" set="0"/>')
         offset += 1
-    stride = offset
 
     p_values = []
     for i in range(0, len(indices), 3):

@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from ..manifest import BuildResult
-from .scene import Assembler, ExportOptions
-from .daewriter import export_dae
+from .daewriter import export_dae, summarize_dae_warnings
 from .gltf import Document
+from .scene import Assembler, ExportOptions
 
 
 @dataclass
