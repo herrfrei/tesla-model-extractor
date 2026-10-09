@@ -16,14 +16,15 @@ from .service import (
     ExtractError,
     Session,
     build_pack,
-    export_glb,
     export_dae,
+    export_glb,    
     open_source,
     pack_targets,
     plan_zip_groups,
     wheel_filter_for_extract,
     wheel_option,
 )
+from .unreal.daewriter import summarize_dae_warnings
 from .unreal.materials import DEFAULT_PAINT_BRIGHTNESS
 from .unreal.scene import DEFAULT_VARIANTS, ExportOptions
 from .validate import DEFAULT_MAX_MIB, validate_pack
