@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import struct
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from xml.sax.saxutils import escape
 
@@ -91,7 +92,7 @@ def _accessor_values(doc: Document, idx: int) -> list[tuple[float, ...]]:
     return out
 
 
-def _floats(values: list[tuple[float, ...]]) -> str:
+def _floats(values: Sequence[tuple[float, ...]]) -> str:
     return " ".join(f"{c:.6f}" for v in values for c in v)
 
 
@@ -147,8 +148,8 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
             positions = _accessor_values(doc, attrs["POSITION"])
             normals = _accessor_values(doc, attrs["NORMAL"]) if "NORMAL" in attrs else None
             uvs = _accessor_values(doc, attrs["TEXCOORD_0"]) if "TEXCOORD_0" in attrs else None
-            indices = (
-                [v[0] for v in _accessor_values(doc, prim["indices"])]
+            indices: list[int] = (
+                [int(v[0]) for v in _accessor_values(doc, prim["indices"])]
                 if "indices" in prim
                 else list(range(len(positions)))
             )
@@ -186,9 +187,9 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
 
 def _geometry_xml(
     geom_id: str,
-    positions: list[tuple[float, float, float]],
-    normals: list[tuple[float, float, float]] | None,
-    uvs: list[tuple[float, ...]] | None,
+    positions: Sequence[tuple[float, float, float]],
+    normals: Sequence[tuple[float, float, float]] | None,
+    uvs: Sequence[tuple[float, ...]] | None,
     indices: list[int],
     has_normals: bool,
     has_uvs: bool,
