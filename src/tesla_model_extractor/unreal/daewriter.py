@@ -158,7 +158,7 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
                 _geometry_xml(geom_id, world_positions, world_normals, uvs, indices, bool(normals), bool(uvs))
             )
             bind_vertex_input = (
-                f'\n          <bind_vertex_input semantic="UVSET0" input_semantic="TEXCOORD" input_set="0"/>'
+                '\n          <bind_vertex_input semantic="UVSET0" input_semantic="TEXCOORD" input_set="0"/>'
                 if uvs else ""
             )
             instances_xml.append(
@@ -375,3 +375,30 @@ def _assemble_dae(
         f'  <scene><instance_visual_scene url="#{scene_id}"/></scene>\n'
         "</COLLADA>\n"
     )
+
+
+_WARNING_PATTERNS: list[tuple[str, str]] = [
+    ("ambient occlusion texture is dropped", "ambient occlusion textures dropped (no AO slot in MTL)"),
+    ("transparency approximated with 'd' only", "materials used approximated transparency ('d' only, no real blending)"),
+    ("metallic/roughness texture has no MTL equivalent", "materials dropped their metallic/roughness texture (factors kept)"),
+    ("clearcoat (paint lacquer) is dropped", "materials dropped clearcoat (paint lacquer); base colour/gloss kept"),
+    ("emissive texture is dropped", "materials dropped their emissive texture (factor kept)"),
+    ("normal map exported as map_Bump", "normal maps exported as map_Bump (strength/scaling not applied)"),
+]
+
+
+def summarize_dae_warnings(warnings: list[str]) -> list[str]:
+    """Collapse repetitive per-material DAE warnings into counted summaries, for console output.
+
+    The full, uncollapsed list is still what callers should write into a sidecar (e.g. obj.json); this is only
+    for a readable CLI summary when a vehicle has dozens of materials repeating the same limitation."""
+    counts: Counter[str] = Counter()
+    other: list[str] = []
+    for w in warnings:
+        for needle, label in _WARNING_PATTERNS:
+            if needle in w:
+                counts[label] += 1
+                break
+        else:
+            other.append(w)
+    return [f"{n} × {label}" for label, n in counts.items()] + other

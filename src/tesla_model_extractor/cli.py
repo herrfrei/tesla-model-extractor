@@ -444,11 +444,11 @@ def cmd_dae(args: argparse.Namespace) -> int:
     except ExtractError as e:
         console.print(f"[red]{e}[/]")
         return EXIT_ERROR
-    pack_warnings = summarize_obj_warnings(result.warnings) if args.quiet_warnings else result.warnings
+    pack_warnings = summarize_dae_warnings(result.warnings) if args.quiet_warnings else result.warnings
     print_warnings(pack_warnings, "pack warnings")
     for o in result.outputs:
         console.print(f"[green]wrote[/] {o.glb}  ({o.glb_bytes / 1024:.1f} KiB)")
-        vehicle_warnings = summarize_obj_warnings(o.warnings) if args.quiet_warnings else o.warnings
+        vehicle_warnings = summarize_dae_warnings(o.warnings) if args.quiet_warnings else o.warnings
         print_warnings(vehicle_warnings, f"{o.model} warnings")
     if args.json:
         print(json.dumps(result.summary(), indent=1))

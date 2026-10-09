@@ -10,6 +10,7 @@ from typing import Any
 from ..manifest import BuildResult
 from .scene import Assembler, ExportOptions
 from .daewriter import export_dae
+from .gltf import Document
 
 
 @dataclass
