@@ -17,7 +17,7 @@ from .service import (
     Session,
     build_pack,
     export_dae,
-    export_glb,    
+    export_glb,
     open_source,
     pack_targets,
     plan_zip_groups,

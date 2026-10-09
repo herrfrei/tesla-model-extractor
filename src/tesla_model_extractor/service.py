@@ -23,7 +23,7 @@ from .gdre import Gdre, GdreError, Progress
 from .godot.resolve import ResourceRoot
 from .manifest import BuildResult, PackBuilder, summarize_model
 from .pack import MIB, PackStats, write_dir, write_zip
-from .unreal.export import VehicleOutput, export_pack, export_dae_pack
+from .unreal.export import VehicleOutput, export_dae_pack, export_pack
 from .unreal.packsource import is_pack, load_pack
 from .unreal.scene import ExportOptions
 from .validate import DEFAULT_MAX_MIB, Report, validate_pack
