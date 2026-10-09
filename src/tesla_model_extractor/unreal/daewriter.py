@@ -122,9 +122,13 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
         raw_name = mat.get("name")
         mat_id = _safe_id(raw_name, mi, used_mat_ids, "mat")
         effect_id = f"{mat_id}-effect"
-        effects_xml.append(_effect_xml(doc, mi, mat, effect_id, mat_id, textures, tex_out, used_img_ids, images_xml, warnings))
-        materials_xml.append(f'    <material id="{mat_id}" name="{escape(mat_id)}">\n'
-                              f'      <instance_effect url="#{effect_id}"/>\n    </material>')
+        effects_xml.append(
+            _effect_xml(doc, mi, mat, effect_id, mat_id, textures, tex_out, used_img_ids, images_xml, warnings)
+        )
+        materials_xml.append(
+            f'    <material id="{mat_id}" name="{escape(mat_id)}">\n'
+            f'      <instance_effect url="#{effect_id}"/>\n    </material>'
+        )
         mat_ref_ids[mi] = mat_id
         return effect_id, mat_id
 
@@ -135,14 +139,18 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
         m = world[ni]
         for pi, prim in enumerate(doc.meshes[node["mesh"]]["primitives"]):
             if prim.get("mode", 4) != 4:
-                warnings.append(f"{node.get('name')}: primitive mode {prim.get('mode')} is not a triangle list, skipped")
+                warnings.append(
+                    f"{node.get('name')}: primitive mode {prim.get('mode')} is not a triangle list, skipped"
+                )
                 continue
             attrs = prim["attributes"]
             positions = _accessor_values(doc, attrs["POSITION"])
             normals = _accessor_values(doc, attrs["NORMAL"]) if "NORMAL" in attrs else None
             uvs = _accessor_values(doc, attrs["TEXCOORD_0"]) if "TEXCOORD_0" in attrs else None
-            indices = [v[0] for v in _accessor_values(doc, prim["indices"])] if "indices" in prim else list(
-                range(len(positions))
+            indices = (
+                [v[0] for v in _accessor_values(doc, prim["indices"])]
+                if "indices" in prim
+                else list(range(len(positions)))
             )
 
             world_positions = [_apply(m, (p[0], p[1], p[2])) for p in positions]
@@ -159,16 +167,17 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
             )
             bind_vertex_input = (
                 '\n          <bind_vertex_input semantic="UVSET0" input_semantic="TEXCOORD" input_set="0"/>'
-                if uvs else ""
+                if uvs
+                else ""
             )
             instances_xml.append(
                 f'    <node id="{geom_id}_node" name="{escape(base)}">\n'
                 f'      <instance_geometry url="#{geom_id}">\n'
-                f'        <bind_material>\n          <technique_common>\n'
+                f"        <bind_material>\n          <technique_common>\n"
                 f'            <instance_material symbol="{mat_id}" target="#{mat_id}">{bind_vertex_input}\n'
-                f'            </instance_material>\n'
-                f'          </technique_common>\n        </bind_material>\n'
-                f'      </instance_geometry>\n    </node>'
+                f"            </instance_material>\n"
+                f"          </technique_common>\n        </bind_material>\n"
+                f"      </instance_geometry>\n    </node>"
             )
 
     dae = _assemble_dae(name, images_xml, effects_xml, materials_xml, geometries_xml, instances_xml)
@@ -274,33 +283,43 @@ def _effect_xml(
         if img_id:
             surface_sid = f"{mat_label}-diffuse-surface"
             sampler_sid = f"{mat_label}-diffuse-sampler"
-            newparams.append(f'<newparam sid="{surface_sid}"><surface type="2D">'
-                              f'<init_from>{img_id}</init_from></surface></newparam>')
-            newparams.append(f'<newparam sid="{sampler_sid}"><sampler2D>'
-                              f'<source>{surface_sid}</source></sampler2D></newparam>')
+            newparams.append(
+                f'<newparam sid="{surface_sid}"><surface type="2D"><init_from>{img_id}</init_from></surface></newparam>'
+            )
+            newparams.append(
+                f'<newparam sid="{sampler_sid}"><sampler2D><source>{surface_sid}</source></sampler2D></newparam>'
+            )
             diffuse_tag = f'<texture texture="{sampler_sid}" texcoord="UVSET0"/>'
 
     normal = mat.get("normalTexture")
     if normal is not None:
         img_id, _ = _emit_texture(doc, normal["index"], f"{mat_label}_N.png", out, used_img_ids, images_xml)
         if img_id:
-            warnings.append(f"{mat_label}: normal map texture is embedded as an unused surface/sampler pair; "
-                             f"strength/scaling not applied (no standard Collada-phong normal map slot)")
+            warnings.append(
+                f"{mat_label}: normal map texture is embedded as an unused surface/sampler pair; "
+                f"strength/scaling not applied (no standard Collada-phong normal map slot)"
+            )
             surface_sid = f"{mat_label}-bump-surface"
             sampler_sid = f"{mat_label}-bump-sampler"
-            newparams.append(f'<newparam sid="{surface_sid}"><surface type="2D">'
-                              f'<init_from>{img_id}</init_from></surface></newparam>')
-            newparams.append(f'<newparam sid="{sampler_sid}"><sampler2D>'
-                              f'<source>{surface_sid}</source></sampler2D></newparam>')
+            newparams.append(
+                f'<newparam sid="{surface_sid}"><surface type="2D"><init_from>{img_id}</init_from></surface></newparam>'
+            )
+            newparams.append(
+                f'<newparam sid="{sampler_sid}"><sampler2D><source>{surface_sid}</source></sampler2D></newparam>'
+            )
 
     if pbr.get("metallicRoughnessTexture") is not None:
-        warnings.append(f"{mat_label}: metallic/roughness texture has no Collada-phong equivalent, only the factors are kept")
+        warnings.append(
+            f"{mat_label}: metallic/roughness texture has no Collada-phong equivalent, only the factors are kept"
+        )
     if mat.get("occlusionTexture") is not None:
         warnings.append(f"{mat_label}: ambient occlusion texture is dropped (no AO slot in Collada phong)")
     if "KHR_materials_clearcoat" in (mat.get("extensions") or {}):
         warnings.append(f"{mat_label}: clearcoat (paint lacquer) is dropped, only base colour/gloss is kept")
     if mat.get("alphaMode") == "BLEND":
-        warnings.append(f"{mat_label}: transparency approximated with <transparency> only (no physically based blending)")
+        warnings.append(
+            f"{mat_label}: transparency approximated with <transparency> only (no physically based blending)"
+        )
     if "KHR_materials_unlit" in (mat.get("extensions") or {}):
         warnings.append(f"{mat_label}: unlit material approximated as plain phong with zero specular")
     if mat.get("emissiveTexture") is not None:
@@ -316,7 +335,7 @@ def _effect_xml(
     newparams_xml = "\n      " + "\n      ".join(newparams) if newparams else ""
     return (
         f'  <effect id="{effect_id}">\n'
-        f'    <profile_COMMON>{newparams_xml}\n'
+        f"    <profile_COMMON>{newparams_xml}\n"
         f'      <technique sid="common">\n'
         f"        <phong>\n"
         f"          <emission><color>{emissive[0]:.4f} {emissive[1]:.4f} {emissive[2]:.4f} 1</color></emission>\n"
@@ -342,7 +361,7 @@ def _emit_texture(
         bv = doc.json["bufferViews"][img["bufferView"]]
     except (KeyError, IndexError):
         return None, None
-    data = bytes(doc.bin[bv["byteOffset"]: bv["byteOffset"] + bv["byteLength"]])
+    data = bytes(doc.bin[bv["byteOffset"] : bv["byteOffset"] + bv["byteLength"]])
     out[out_name] = data
     img_id = _safe_id(out_name.rsplit(".", 1)[0], len(used_img_ids), used_img_ids, "img")
     images_xml.append(f'  <image id="{img_id}"><init_from>textures/{out_name}</init_from></image>')
@@ -378,8 +397,14 @@ def _assemble_dae(
 
 _WARNING_PATTERNS: list[tuple[str, str]] = [
     ("ambient occlusion texture is dropped", "ambient occlusion textures dropped (no AO slot in MTL)"),
-    ("transparency approximated with 'd' only", "materials used approximated transparency ('d' only, no real blending)"),
-    ("metallic/roughness texture has no MTL equivalent", "materials dropped their metallic/roughness texture (factors kept)"),
+    (
+        "transparency approximated with 'd' only",
+        "materials used approximated transparency ('d' only, no real blending)",
+    ),
+    (
+        "metallic/roughness texture has no MTL equivalent",
+        "materials dropped their metallic/roughness texture (factors kept)",
+    ),
     ("clearcoat (paint lacquer) is dropped", "materials dropped clearcoat (paint lacquer); base colour/gloss kept"),
     ("emissive texture is dropped", "materials dropped their emissive texture (factor kept)"),
     ("normal map exported as map_Bump", "normal maps exported as map_Bump (strength/scaling not applied)"),

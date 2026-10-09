@@ -153,7 +153,6 @@ def _parser() -> argparse.ArgumentParser:
     un.add_argument("--yes", "-y", action="store_true", help="no interactive selection; default to the first Model Y")
     un.add_argument("--json", action="store_true", help="print a machine-readable summary to stdout")
 
-
     da = sub.add_parser(
         "dae",
         help="export COLLADA (.dae) + textures (same options as `obj`, better material fidelity for Sweet Home 3D)",
