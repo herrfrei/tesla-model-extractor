@@ -91,7 +91,11 @@ def _inverse_transpose3(m: list[float]) -> list[float]:
 def _normal_matrix_apply(m: list[float], v: tuple[float, float, float]) -> tuple[float, float, float]:
     it = _inverse_transpose3(m)
     x, y, z = v
-    nx, ny, nz = (it[0] * x + it[1] * y + it[2] * z, it[3] * x + it[4] * y + it[5] * z, it[6] * x + it[7] * y + it[8] * z)
+    nx, ny, nz = (
+        it[0] * x + it[1] * y + it[2] * z,
+        it[3] * x + it[4] * y + it[5] * z,
+        it[6] * x + it[7] * y + it[8] * z,
+    )
     ln = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
     return (nx / ln, ny / ln, nz / ln)
 
@@ -114,6 +118,7 @@ def _accessor_values(doc: Document, idx: int) -> list[tuple[float, ...]]:
 def _floats(values: Sequence[tuple[float, ...]]) -> str:
     return " ".join(f"{c:.6f}" for v in values for c in v)
 
+
 def _hidden_node_set(doc: Document) -> set[int]:
     """Every node index that is hidden, including the subtree of any node with extras.visible == False."""
     hidden: set[int] = set()
@@ -121,6 +126,7 @@ def _hidden_node_set(doc: Document) -> set[int]:
     for i in explicit:
         hidden.update(doc.descendants(i))
     return hidden
+
 
 def export_dae(doc: Document, name: str = "model", *, drop_ground: bool = True) -> DaeExport:
     """All primitives in scene (world) space, pose at export time, one geometry+material per glTF primitive.
@@ -151,9 +157,7 @@ def export_dae(doc: Document, name: str = "model", *, drop_ground: bool = True) 
         raw_name = mat.get("name")
         mat_id = _safe_id(raw_name, mi, used_mat_ids, "mat")
         effect_id = f"{mat_id}-effect"
-        effects_xml.append(
-            _effect_xml(doc, mi, mat, effect_id, mat_id, tex_out, used_img_ids, images_xml, warnings)
-        )
+        effects_xml.append(_effect_xml(doc, mi, mat, effect_id, mat_id, tex_out, used_img_ids, images_xml, warnings))
         materials_xml.append(
             f'    <material id="{mat_id}" name="{escape(mat_id)}">\n'
             f'      <instance_effect url="#{effect_id}"/>\n    </material>'

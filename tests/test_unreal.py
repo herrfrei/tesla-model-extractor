@@ -391,11 +391,22 @@ def test_paint_brightness_reaches_the_glb_and_sidecar(recovered: Path, rules_dir
         paints = [m for m in doc.materials if (m.get("extras") or {}).get("paint") == "SolidBlack"]
         assert paints and all(m["extras"]["paint_brightness"] == k for m in paints)
 
+
 def test_cli_unreal_honours_exclude(recovered: Path, rules_dir: Path, tmp_path: Path):
     out = tmp_path / "unreal"
     rc = main(
-        ["unreal", str(recovered), "--rules", str(rules_dir), "--models", "kiwi", "-o", str(out),
-         "--exclude", "*badge*"]
+        [
+            "unreal",
+            str(recovered),
+            "--rules",
+            str(rules_dir),
+            "--models",
+            "kiwi",
+            "-o",
+            str(out),
+            "--exclude",
+            "*badge*",
+        ]
     )
     assert rc == 0
     doc = Document.from_glb((out / "kiwi" / "Kiwi.glb").read_bytes())
@@ -405,13 +416,26 @@ def test_cli_unreal_honours_exclude(recovered: Path, rules_dir: Path, tmp_path: 
     assert "Tesla_Badge" in sidecar["excluded_nodes"]
     assert "ground_nodes" in sidecar  # unreal keeps it, unlike dae
 
+
 # ---------- dae ----------
+
 
 def test_cli_dae_hides_hidden_nodes_and_honours_exclude(recovered: Path, rules_dir: Path, tmp_path: Path):
     out = tmp_path / "dae"
     rc = main(
-        ["dae", str(recovered), "--rules", str(rules_dir), "--models", "kiwi", "-o", str(out),
-         "--exclude", "*badge*", "--json"]
+        [
+            "dae",
+            str(recovered),
+            "--rules",
+            str(rules_dir),
+            "--models",
+            "kiwi",
+            "-o",
+            str(out),
+            "--exclude",
+            "*badge*",
+            "--json",
+        ]
     )
     assert rc == 0
     folder = out / "kiwi"
