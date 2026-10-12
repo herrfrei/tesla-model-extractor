@@ -437,7 +437,7 @@ def test_cli_dae_hides_hidden_nodes_and_honours_exclude(recovered: Path, rules_d
 
 def test_dae_drops_normal_maps_but_keeps_the_warning():
     from tesla_model_extractor.unreal.daewriter import export_dae
-    from tesla_model_extractor.unreal.gltf import Document, FLOAT, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, UNSIGNED_SHORT
+    from tesla_model_extractor.unreal.gltf import ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, UNSIGNED_SHORT, Document
 
     doc = Document.empty("Test", "Root")
     img = doc.add_image(b"\x89PNG\r\n\x1a\n" + b"\0" * 16, "normal.png")
