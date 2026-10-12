@@ -24,6 +24,7 @@ and **Advanced → Same as CLI** shows the matching command.
 tesla-model-extract unreal Tesla_4.60.5.apkm --all -o unreal/               # every vehicle, default look
 tesla-model-extract unreal Tesla_4.60.5.apkm --models bayberry --paint Quicksilver --variant performance,plate_us
 tesla-model-extract unreal tesla-view-pack-bayberry-4.60.0.zip -o unreal/   # from an existing asset pack
+tesla-model-extract unreal Tesla_4.60.5.apkm --models poppyseed --exclude "*badge*,*marker*"
 tesla-model-extract unreal recovered-dir --models model_s --wheels none --brakes none --keep-all
 ```
 
@@ -40,6 +41,8 @@ tesla-model-extract unreal recovered-dir --models model_s --wheels none --brakes
 | `--cables` | also write the charge cables to `cables/<PORT>.glb` |
 | `--yaw DEG` | extra rotation about the up axis applied to the root |
 | `--keep-normal-y` | do not flip the green channel of normal maps (see below) |
+| `--keep-normal-y` | do not flip the green channel of normal maps (see below) |
+| `--exclude PATTERN[,PATTERN…]` | drop nodes whose name matches a glob pattern (case-insensitive); hidden-in-Godot parts are not dropped for GLB (glTF has no visibility, see Limitations) — this is for extra, otherwise-visible parts you don't want |
 
 Output per vehicle:
 

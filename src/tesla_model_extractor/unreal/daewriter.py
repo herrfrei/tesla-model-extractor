@@ -3,7 +3,8 @@
 Collada's <phong> technique maps more directly onto glTF PBR than OBJ/MTL does (diffuse/specular/shininess/
 transparency are first-class elements, not implicit conventions), and <library_images> gives textures clean,
 unambiguous relative paths. Features with no Collada-phong equivalent (metallic/roughness textures, clearcoat,
-occlusion, KHR_materials_unlit, animations) are reduced the same way as for OBJ, with warnings recorded.
+occlusion, KHR_materials_unlit, animations) are reduced to their nearest phong approximation, with warnings recorded
+and returned in `DaeExport.warnings`.
 """
 
 from __future__ import annotations
@@ -72,9 +73,27 @@ def _apply(m: list[float], v: tuple[float, float, float]) -> tuple[float, float,
     )
 
 
-def _rotate(m: list[float], v: tuple[float, float, float]) -> tuple[float, float, float]:
+def _mat3(m: list[float]) -> list[float]:
+    return [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]]
+
+
+def _inverse_transpose3(m: list[float]) -> list[float]:
+    a = _mat3(m)
+    # cofactor matrix of the 3x3, then transpose (= adjugate), skip the determinant: normalize() below removes scale
+    co = [
+        a[4] * a[8] - a[5] * a[7], a[5] * a[6] - a[3] * a[8], a[3] * a[7] - a[4] * a[6],
+        a[2] * a[7] - a[1] * a[8], a[0] * a[8] - a[2] * a[6], a[1] * a[6] - a[0] * a[7],
+        a[1] * a[5] - a[2] * a[4], a[2] * a[3] - a[0] * a[5], a[0] * a[4] - a[1] * a[3],
+    ]  # fmt: skip
+    return co  # already the transpose of the cofactor/adjugate matrix (rows ↔ cols swapped by construction)
+
+
+def _normal_matrix_apply(m: list[float], v: tuple[float, float, float]) -> tuple[float, float, float]:
+    it = _inverse_transpose3(m)
     x, y, z = v
-    return (m[0] * x + m[4] * y + m[8] * z, m[1] * x + m[5] * y + m[9] * z, m[2] * x + m[6] * y + m[10] * z)
+    nx, ny, nz = (it[0] * x + it[1] * y + it[2] * z, it[3] * x + it[4] * y + it[5] * z, it[6] * x + it[7] * y + it[8] * z)
+    ln = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
+    return (nx / ln, ny / ln, nz / ln)
 
 
 def _accessor_values(doc: Document, idx: int) -> list[tuple[float, ...]]:
@@ -95,12 +114,22 @@ def _accessor_values(doc: Document, idx: int) -> list[tuple[float, ...]]:
 def _floats(values: Sequence[tuple[float, ...]]) -> str:
     return " ".join(f"{c:.6f}" for v in values for c in v)
 
+def _hidden_node_set(doc: Document) -> set[int]:
+    """Every node index that is hidden, including the subtree of any node with extras.visible == False."""
+    hidden: set[int] = set()
+    explicit = {i for i, n in enumerate(doc.nodes) if n.get("extras", {}).get("visible") is False}
+    for i in explicit:
+        hidden.update(doc.descendants(i))
+    return hidden
 
-def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "model") -> DaeExport:
-    """All primitives in scene (world) space, pose at export time, one geometry+material per glTF primitive."""
-    textures = textures or {}
+def export_dae(doc: Document, name: str = "model", *, drop_ground: bool = True) -> DaeExport:
+    """All primitives in scene (world) space, pose at export time, one geometry+material per glTF primitive.
+
+    Nodes flagged `extras.visible = False` (and their subtree) are skipped, and `GroundPlane`/`Floor`/shadow
+    meshes are dropped by default (`drop_ground=False` keeps them)."""
     warnings: list[str] = []
     world = _world_matrices(doc)
+    hidden = _hidden_node_set(doc)
 
     used_mat_ids: set[str] = set()
     used_img_ids: set[str] = set()
@@ -111,12 +140,11 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
     effects_xml: list[str] = []
     materials_xml: list[str] = []
     geometries_xml: list[str] = []
-    instances_xml: list[str] = []  # <node> entries under the visual scene
+    instances_xml: list[str] = []
 
-    mat_ref_ids: dict[int, str] = {}  # glTF material index -> collada material id (one effect+material per glTF mat)
+    mat_ref_ids: dict[int, str] = {}
 
     def material_ids(mi: int) -> tuple[str, str]:
-        """Create (once) the <effect>/<material> pair for a glTF material index, returning (effect_id, material_id)."""
         if mi in mat_ref_ids:
             return mat_ref_ids[mi], mat_ref_ids[mi]
         mat = doc.materials[mi] if mi >= 0 else {}
@@ -124,7 +152,7 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
         mat_id = _safe_id(raw_name, mi, used_mat_ids, "mat")
         effect_id = f"{mat_id}-effect"
         effects_xml.append(
-            _effect_xml(doc, mi, mat, effect_id, mat_id, textures, tex_out, used_img_ids, images_xml, warnings)
+            _effect_xml(doc, mi, mat, effect_id, mat_id, tex_out, used_img_ids, images_xml, warnings)
         )
         materials_xml.append(
             f'    <material id="{mat_id}" name="{escape(mat_id)}">\n'
@@ -135,7 +163,9 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
 
     node_count = 0
     for ni, node in enumerate(doc.nodes):
-        if "mesh" not in node:
+        if "mesh" not in node or ni in hidden:
+            continue
+        if drop_ground and re.search(r"(?i)ground|^floor$|shadow", node.get("name", "")):
             continue
         m = world[ni]
         for pi, prim in enumerate(doc.meshes[node["mesh"]]["primitives"]):
@@ -155,7 +185,7 @@ def export_dae(doc: Document, textures: dict[str, bytes] | None, name: str = "mo
             )
 
             world_positions = [_apply(m, (p[0], p[1], p[2])) for p in positions]
-            world_normals = [_rotate(m, (n_[0], n_[1], n_[2])) for n_ in normals] if normals else None
+            world_normals = [_normal_matrix_apply(m, (n_[0], n_[1], n_[2])) for n_ in normals] if normals else None
 
             base = node.get("name") or f"node{ni}"
             geom_id = _safe_id(f"{base}_{pi}", node_count, used_geom_ids, "geom")
@@ -263,7 +293,6 @@ def _effect_xml(
     mat: dict,
     effect_id: str,
     mat_label: str,
-    textures: dict[str, bytes],
     out: dict[str, bytes],
     used_img_ids: set[str],
     images_xml: list[str],
@@ -294,20 +323,10 @@ def _effect_xml(
 
     normal = mat.get("normalTexture")
     if normal is not None:
-        img_id, _ = _emit_texture(doc, normal["index"], f"{mat_label}_N.png", out, used_img_ids, images_xml)
-        if img_id:
-            warnings.append(
-                f"{mat_label}: normal map texture is embedded as an unused surface/sampler pair; "
-                f"strength/scaling not applied (no standard Collada-phong normal map slot)"
-            )
-            surface_sid = f"{mat_label}-bump-surface"
-            sampler_sid = f"{mat_label}-bump-sampler"
-            newparams.append(
-                f'<newparam sid="{surface_sid}"><surface type="2D"><init_from>{img_id}</init_from></surface></newparam>'
-            )
-            newparams.append(
-                f'<newparam sid="{sampler_sid}"><sampler2D><source>{surface_sid}</source></sampler2D></newparam>'
-            )
+        warnings.append(
+            f"{mat_label}: normal map dropped (no normal-map slot in Collada phong; "
+            f"a sampler nothing references would just be dead weight in the .dae)"
+        )
 
     if pbr.get("metallicRoughnessTexture") is not None:
         warnings.append(
@@ -397,18 +416,22 @@ def _assemble_dae(
 
 
 _WARNING_PATTERNS: list[tuple[str, str]] = [
-    ("ambient occlusion texture is dropped", "ambient occlusion textures dropped (no AO slot in MTL)"),
+    ("ambient occlusion texture is dropped", "ambient occlusion textures dropped (no AO slot in Collada phong)"),
     (
-        "transparency approximated with 'd' only",
-        "materials used approximated transparency ('d' only, no real blending)",
+        "transparency approximated with <transparency> only",
+        "materials used approximated transparency (<transparency> only, no physically based blending)",
     ),
     (
-        "metallic/roughness texture has no MTL equivalent",
+        "metallic/roughness texture has no Collada-phong equivalent",
         "materials dropped their metallic/roughness texture (factors kept)",
     ),
     ("clearcoat (paint lacquer) is dropped", "materials dropped clearcoat (paint lacquer); base colour/gloss kept"),
     ("emissive texture is dropped", "materials dropped their emissive texture (factor kept)"),
-    ("normal map exported as map_Bump", "normal maps exported as map_Bump (strength/scaling not applied)"),
+    (
+        "normal map texture is embedded as an unused surface/sampler pair",
+        "normal maps embedded but unused (no normal-map slot in Collada phong)",
+    ),
+    ("unlit material approximated as plain phong", "unlit materials approximated as plain phong with zero specular"),
 ]
 
 

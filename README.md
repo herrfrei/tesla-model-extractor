@@ -151,6 +151,7 @@ $ tesla-model-extract list Tesla_4.60.5.apkm
 tesla-model-extract unreal Tesla_4.60.5.apkm --all -o unreal/
 tesla-model-extract unreal Tesla_4.60.5.apkm --models bayberry --paint Quicksilver --variant performance,plate_us
 tesla-model-extract unreal Tesla_4.60.5.apkm --models model_s --wheels none --brakes none --separate-wheels --cables
+tesla-model-extract unreal Tesla_4.60.5.apkm --models poppyseed --exclude "*badge*,*marker*"
 tesla-model-extract unreal tesla-view-pack-bayberry-4.60.0.zip     # from an asset pack you already built
 ```
 
@@ -160,17 +161,25 @@ validator and loads in Blender, three.js and `<model-viewer>` as well.
 
 ## DAE export (Sweet Home 3D, Blender, MeshLab)
 
-`dae` writes the same assembled vehicle as `unreal` (one baked-in look, wheels, brakes, optional `--exclude`
-filtering) as **COLLADA (.dae) + textures**, for tools with a mature Collada importer. Sweet Home 3D is the
-best-tested target, since it is Collada-native; Blender (4.2.x) and MeshLab also import the files correctly.
-Collada has no animation support in this export, so closures are written in their default, closed pose, and
-Collada-phong materials are an approximation of the app's PBR materials (metallic/roughness, clear-coat and
-occlusion textures have no equivalent and are dropped; see `dae.json` for exactly what was approximated per
-material).
+`dae` writes the same assembled vehicle as `unreal` (one baked-in look, wheels, brakes) as **COLLADA (.dae) +
+textures**, for tools with a mature Collada importer. Sweet Home 3D is the best-tested target, since it is
+Collada-native; Blender (4.2.x) and MeshLab also import the files correctly.
+
+Collada has no concept of hidden geometry, so parts the app only shows in certain states (lights, defrost
+overlays, projections – listed under `hidden_nodes` in `dae.json`) are dropped automatically, together with the
+contact-shadow / ground-plane meshes (`GroundPlane`, `Floor`, …), so a `.dae` opened as is does not show stray
+light lenses floating in the air. (`dae.json` therefore has no `ground_nodes` field — unlike `unreal.json`, where
+the meshes are still in the GLB and the field tells a GLB consumer which ones to hide — these are already gone
+from the file.) Pass `--keep-all` to keep everything instead (it also disables variant removal, same as for
+`unreal`). `--exclude PATTERN` removes additional, otherwise-visible nodes you don't want (badges, markers, …).
+
+Closures are written in their default, closed pose (no animation support in Collada), and Collada-phong materials
+are an approximation of the app's PBR materials (metallic/roughness, clear-coat, occlusion and normal-map textures
+have no equivalent and are dropped; see `dae.json` for exactly what was approximated per material).
 
 ```bash
 tesla-model-extract dae Tesla_4.60.5.apkm --models bayberry --paint Quicksilver -o dae/
-tesla-model-extract dae Tesla_4.60.5.apkm --models poppyseed --exclude "*frost*,*_RHD*" -o dae/
+tesla-model-extract dae Tesla_4.60.5.apkm --models poppyseed --exclude "*badge*,*marker*" -o dae/
 ```
 
 Each vehicle gets its own folder with `<Codename>.dae`, a `textures/` folder and a `dae.json` sidecar (same shape
@@ -178,7 +187,8 @@ as `unreal.json`, plus notes on anything Collada-phong could not represent).
 
 | option | meaning |
 |---|---|
-| `--exclude PATTERN[,PATTERN]` | drop nodes whose name matches one of these glob patterns (case-insensitive), e.g. `*frost*,*_RHD*` |
+| `--exclude PATTERN[,PATTERN]` | drop additional, visible nodes whose name matches one of these glob patterns (case-insensitive); hidden-in-Godot parts and the ground/shadow meshes are already dropped automatically |
+| `--quiet-warnings` | collapse repetitive per-material warnings into counted summaries |
 
 All other options (`--models`, `--all`, `--paint`, `--variant`, `--wheels`, `--brakes`, `--yaw`, `--keep-all`,
 `--keep-normal-y`, `--paint-brightness`) work the same as for `unreal`.
@@ -211,7 +221,7 @@ tesla-model-extract [extract] <bundle|recovered-dir> [-o OUT] [--models ID[,ID]]
 tesla-model-extract unreal   <bundle|recovered-dir|pack.zip> [-o DIR] [--models ID[,ID]] [--all] [--paint NAME]
                     [--variant V[,V]] [--wheels default|NAME|none] [--brakes default|SET|none]
                     [--separate-wheels] [--cables] [--keep-all] [--yaw DEG] [--keep-normal-y]
-                    [--paint-brightness FACTOR]
+                    [--paint-brightness FACTOR] [--exclude PATTERN[,PATTERN]]
 tesla-model-extract dae      <bundle|recovered-dir|pack.zip> [-o DIR] [--models ID[,ID]] [--all] [--paint NAME]
                     [--variant V[,V]] [--wheels default|NAME|none] [--brakes default|SET|none]
                     [--keep-all] [--yaw DEG] [--keep-normal-y] [--paint-brightness FACTOR]
@@ -229,10 +239,12 @@ tesla-model-extract gui                                    # the desktop app (ne
 | `--keep-recovered DIR` / `--recovered DIR` | keep / reuse the GDRE recovery (≈ 1.4 GB) |
 | `--gdre PATH`, `--no-download` | use your own GDRE Tools binary; never download it |
 | `--rules DIR` | extra `<codename>.yaml` rules (see [docs/rules.md](docs/rules.md)) |
+| `--exclude PATTERN[,PATTERN]` | drop additional, otherwise-visible nodes whose name matches one of these glob patterns (case-insensitive); available for both `unreal` and `dae` |
 | `--wheels family` (extract) | (default) all wheel scenes of the vehicle's wheel family; `all` = every wheel; or a list of API names (`Crossflow19,HelixV220`) |
 | `--bundle` (extract) | one zip with all selected models; fails validation when it exceeds `--max-size` (100 MiB, the HA upload limit) |
 | `--split` (extract) | like `--bundle`, but spreads the models over as few zips as needed to keep each under `--max-size` (what the desktop app's wizard does) |
 | `--dir` (extract) | write an unzipped pack directory (for development against the card) |
+| `--quiet-warnings` (dae) | collapse repetitive per-material warnings into counted summaries |
 
 Reproducible builds: set `SOURCE_DATE_EPOCH` to pin `generated_at`; everything else is deterministic.
 

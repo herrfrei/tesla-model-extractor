@@ -1,5 +1,6 @@
 import io
 import json
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -389,3 +390,76 @@ def test_paint_brightness_reaches_the_glb_and_sidecar(recovered: Path, rules_dir
         doc = Document.from_glb(out.glb)
         paints = [m for m in doc.materials if (m.get("extras") or {}).get("paint") == "SolidBlack"]
         assert paints and all(m["extras"]["paint_brightness"] == k for m in paints)
+
+def test_cli_unreal_honours_exclude(recovered: Path, rules_dir: Path, tmp_path: Path):
+    out = tmp_path / "unreal"
+    rc = main(
+        ["unreal", str(recovered), "--rules", str(rules_dir), "--models", "kiwi", "-o", str(out),
+         "--exclude", "*badge*"]
+    )
+    assert rc == 0
+    doc = Document.from_glb((out / "kiwi" / "Kiwi.glb").read_bytes())
+    names = {n.get("name") for n in doc.nodes}
+    assert "Tesla_Badge" not in names
+    sidecar = json.loads((out / "kiwi" / "unreal.json").read_text())
+    assert "Tesla_Badge" in sidecar["excluded_nodes"]
+    assert "ground_nodes" in sidecar  # unreal keeps it, unlike dae
+
+# ---------- dae ----------
+
+def test_cli_dae_hides_hidden_nodes_and_honours_exclude(recovered: Path, rules_dir: Path, tmp_path: Path):
+    out = tmp_path / "dae"
+    rc = main(
+        ["dae", str(recovered), "--rules", str(rules_dir), "--models", "kiwi", "-o", str(out),
+         "--exclude", "*badge*", "--json"]
+    )
+    assert rc == 0
+    folder = out / "kiwi"
+    dae_path = folder / "Kiwi.dae"
+    assert dae_path.exists()
+    tree = ET.parse(dae_path)
+    ns = {"c": "http://www.collada.org/2005/11/COLLADASchema"}
+    node_names = {n.get("name") for n in tree.findall(".//c:visual_scene/c:node", ns)}
+
+    sidecar = json.loads((folder / "dae.json").read_text())
+    assert "Tesla_Badge" not in node_names  # excluded
+    assert "Tesla_Badge" in sidecar["excluded_nodes"]
+    assert "DRL" not in node_names  # hidden, no runtime to hide it in a .dae
+    assert "GroundPlane" not in node_names  # dropped by default
+    assert "ground_nodes" not in sidecar  # dropped
+
+    # every referenced texture file exists
+    for init in tree.findall(".//c:library_images/c:image/c:init_from", ns):
+        rel = init.text.strip()
+        assert rel.startswith("textures/")
+        assert (folder / rel).exists()
+
+
+def test_dae_drops_normal_maps_but_keeps_the_warning():
+    from tesla_model_extractor.unreal.daewriter import export_dae
+    from tesla_model_extractor.unreal.gltf import Document, FLOAT, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, UNSIGNED_SHORT
+
+    doc = Document.empty("Test", "Root")
+    img = doc.add_image(b"\x89PNG\r\n\x1a\n" + b"\0" * 16, "normal.png")
+    tex = doc.add_texture(img)
+    mat = doc.add_material(
+        {
+            "name": "Trim",
+            "pbrMetallicRoughness": {"baseColorFactor": [0.8, 0.8, 0.8, 1.0]},
+            "normalTexture": {"index": tex},
+        }
+    )
+    positions = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    normals = [0.0, 0.0, 1.0] * 3
+    attrs = {
+        "POSITION": doc.add_accessor(positions, "VEC3", FLOAT, ARRAY_BUFFER),
+        "NORMAL": doc.add_accessor(normals, "VEC3", FLOAT, ARRAY_BUFFER, minmax=False),
+    }
+    indices = doc.add_accessor([0, 1, 2], "SCALAR", UNSIGNED_SHORT, ELEMENT_ARRAY_BUFFER, minmax=False)
+    mesh = doc.add_mesh("Panel", [{"attributes": attrs, "indices": indices, "material": mat, "mode": 4}])
+    node = doc.add_node("Panel", doc.root)
+    doc.nodes[node]["mesh"] = mesh
+
+    res = export_dae(doc, "Test")
+    assert not any(name.endswith("_N.png") for name in res.textures)
+    assert any("normal map" in w for w in res.warnings)

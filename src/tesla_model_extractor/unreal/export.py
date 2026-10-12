@@ -86,7 +86,9 @@ def export_dae_pack(
     opt: ExportOptions,
     out_dir: Path,
 ) -> list[VehicleOutput]:
-    """Like export_obj_pack, but writes Collada (.dae) + textures instead of OBJ/MTL."""
+    """Like export_pack, but writes Collada (.dae) + textures instead of glTF, and strips sidecar fields that
+    only make sense for the GLB (ground_nodes: the DAE writer already physically removes those meshes, listing
+    them would just be confusing noise next to a file that doesn't contain them)."""
     out: list[VehicleOutput] = []
     asm = Assembler(result, opt)
     for model_id in model_ids:
@@ -96,7 +98,7 @@ def export_dae_pack(
         folder.mkdir(parents=True, exist_ok=True)
         codename = model.get("codename") or model_id
         doc = Document.from_glb(res.glb)
-        daeres = export_dae(doc, None, codename)
+        daeres = export_dae(doc, codename, drop_ground=not opt.keep_all)
         (folder / f"{codename}.dae").write_bytes(daeres.dae)
         if daeres.textures:
             tex_dir = folder / "textures"
@@ -104,6 +106,7 @@ def export_dae_pack(
             for fname, data in daeres.textures.items():
                 (tex_dir / fname).write_bytes(data)
         warnings = list(res.warnings) + daeres.warnings
+        res.sidecar.pop("ground_nodes", None)
         res.sidecar["warnings"] = list(dict.fromkeys(res.sidecar.get("warnings", []) + daeres.warnings))
         (folder / "dae.json").write_bytes(_json_bytes(res.sidecar))
         out.append(

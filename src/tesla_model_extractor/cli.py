@@ -143,6 +143,12 @@ def _parser() -> argparse.ArgumentParser:
     un.add_argument("--cables", action="store_true", help="also write the charge cables as GLBs")
     un.add_argument("--keep-normal-y", action="store_true", help="do not flip the green channel of normal maps")
     un.add_argument(
+        "--exclude",
+        metavar="PATTERN[,PATTERN…]",
+        default="",
+        help="drop nodes whose name matches a glob pattern (case-insensitive)",
+    )
+    un.add_argument(
         "--paint-brightness",
         type=float,
         default=DEFAULT_PAINT_BRIGHTNESS,
@@ -155,7 +161,7 @@ def _parser() -> argparse.ArgumentParser:
 
     da = sub.add_parser(
         "dae",
-        help="export COLLADA (.dae) + textures (same options as `obj`, better material fidelity for Sweet Home 3D)",
+        help="export COLLADA (.dae) + textures (better material fidelity for Sweet Home 3D)",
     )
     common(da)
     da.add_argument("-o", "--output", metavar="DIR", default="dae", help="output directory (default: ./dae/)")
